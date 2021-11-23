@@ -1,5 +1,5 @@
 use chrono::{DateTime, Datelike, Offset, TimeZone, Timelike, Utc};
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 use strum_macros::{EnumString, FromRepr};
 
 /// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4.11)
@@ -94,7 +94,7 @@ pub enum BooleanValue {
 }
 
 /// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4.3)
-#[derive(EnumString, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum UriSecuritySupportedKeyword {
     #[strum(serialize = "none")]
     None,
@@ -103,7 +103,7 @@ pub enum UriSecuritySupportedKeyword {
 }
 
 /// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4.2)
-#[derive(EnumString, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum UriAuthenticationSupportedKeyword {
     #[strum(serialize = "none")]
     None,
@@ -118,7 +118,7 @@ pub enum UriAuthenticationSupportedKeyword {
 }
 
 /// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4.32)
-#[derive(EnumString, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PdlOverrideSupportedKeyword {
     #[strum(serialize = "attempted")]
     Attempted,
@@ -127,7 +127,7 @@ pub enum PdlOverrideSupportedKeyword {
 }
 
 /// [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4.32)
-#[derive(EnumString, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CompressionSupportedKeyword {
     #[strum(serialize = "none")]
     None,
@@ -178,7 +178,7 @@ pub enum StatusCode {
 }
 
 /// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4)
-#[derive(EnumString, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PrinterAttribute {
     #[strum(serialize = "printer-uri-supported")]
     PrinterUriSupported,
@@ -256,7 +256,7 @@ pub enum PrinterAttribute {
     PagesPerMinuteColor,
 }
 
-#[derive(EnumString, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum JobTemplateAttribute {
     #[strum(serialize = "job-priority")]
     JobPriority,
@@ -286,7 +286,7 @@ pub enum JobTemplateAttribute {
     PrintQuality,
 }
 
-#[derive(EnumString, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum JobAttribute {
     #[strum(serialize = "job-uri")]
     JobUri,
@@ -346,7 +346,7 @@ pub enum JobAttribute {
     JobMediaSheetsCompleted,
 }
 
-#[derive(EnumString, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum OperationAttribute {
     #[strum(serialize = "requested-attributes")]
     RequestedAttributes,
@@ -639,32 +639,257 @@ impl IppEncode for DateTime<Utc> {
     }
 }
 
+pub enum IppError {
+    AttributeNameNotSupported,
+}
+
 pub enum AttributeValue {
-    String(String),
+    TextWithoutLang(String),
     Number(i32),
     Boolean(bool),
     TextWithLang(TextWithLang),
     DateTime(DateTime<Utc>),
 }
 
-#[derive(Debug, Clone, Copy)]
+impl AttributeValue {
+    fn from_ipp(bytes: &Vec<u8>, offset: usize, value_tag: ValueTag) -> (usize, Self) {
+        let mut len: usize = 0;
+        let value: Self;
+        match value_tag {
+            ValueTag::Integer | ValueTag::Enum => {
+                let (delta, raw_value) = i32::from_ipp(bytes, offset);
+                len = delta;
+                value = Self::Number(raw_value);
+            }
+            ValueTag::Boolean => {
+                let (delta, raw_value) = bool::from_ipp(bytes, offset);
+                len = delta;
+                value = Self::Boolean(raw_value);
+            }
+            ValueTag::TextWithLanguage => {
+                let (delta, raw_value) = TextWithLang::from_ipp(bytes, offset);
+                len = delta;
+                value = Self::TextWithLang(raw_value);
+            }
+            ValueTag::DateTime => {
+                let (delta, raw_value) = DateTime::from_ipp(bytes, offset);
+                len = delta;
+                value = Self::DateTime(raw_value);
+            }
+            _ => {
+                let (delta, raw_value) = String::from_ipp(bytes, offset);
+                len = delta;
+                value = Self::TextWithoutLang(raw_value);
+            }
+        }
+
+        (len, value)
+    }
+
+    fn to_ipp(&self) -> Vec<u8> {
+        match self {
+            Self::Boolean(raw_value) => raw_value.to_ipp(),
+            Self::Number(raw_value) => raw_value.to_ipp(),
+            Self::DateTime(raw_value) => raw_value.to_ipp(),
+            Self::TextWithLang(raw_value) => raw_value.to_ipp(),
+            Self::TextWithoutLang(raw_value) => raw_value.to_ipp(),
+        }
+    }
+
+    fn ipp_len(&self) -> usize {
+        match self {
+            Self::Boolean(raw_value) => raw_value.ipp_len(),
+            Self::Number(raw_value) => raw_value.ipp_len(),
+            Self::DateTime(raw_value) => raw_value.ipp_len(),
+            Self::TextWithLang(raw_value) => raw_value.ipp_len(),
+            Self::TextWithoutLang(raw_value) => raw_value.ipp_len(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum AttributeName {
     Operation(OperationAttribute),
     Printer(PrinterAttribute),
     JobTemplate(JobTemplateAttribute),
     Job(JobAttribute),
+    Unsupported(String),
 }
 
-// pub struct Attribute {
-//     pub tag: ValueTag,
-//     pub name: AttributeName,
-//     pub values: Vec<AttributeValue>,
-// }
+impl AttributeName {
+    pub fn from_str(str: &str) -> Self {
+        if let Ok(n) = OperationAttribute::from_str(str) {
+            Self::Operation(n)
+        } else if let Ok(n) = PrinterAttribute::from_str(str) {
+            Self::Printer(n)
+        } else if let Ok(n) = JobTemplateAttribute::from_str(str) {
+            Self::JobTemplate(n)
+        } else if let Ok(n) = JobAttribute::from_str(str) {
+            Self::Job(n)
+        } else {
+            Self::Unsupported(String::from(str))
+        }
+    }
 
-// impl IppEncode for Attribute {
-//     fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {}
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Operation(attr) => attr.to_string(),
+            Self::Printer(attr) => attr.to_string(),
+            Self::JobTemplate(attr) => attr.to_string(),
+            Self::Job(attr) => attr.to_string(),
+            Self::Unsupported(attr) => String::from(attr),
+        }
+    }
 
-//     fn to_ipp(&self) -> Vec<u8> {}
+    pub fn is_empty(&self) -> bool {
+        if let Self::Unsupported(attr) = self {
+            attr == ""
+        } else {
+            false
+        }
+    }
+}
 
-//     fn ipp_len(&self) -> usize {}
-// }
+impl IppEncode for AttributeName {
+    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
+        let (delta, raw_name) = String::from_ipp(bytes, offset);
+        (delta, Self::from_str(&raw_name))
+    }
+
+    fn to_ipp(&self) -> Vec<u8> {
+        self.to_string().to_ipp()
+    }
+
+    fn ipp_len(&self) -> usize {
+        self.to_string().ipp_len()
+    }
+}
+
+pub struct Attribute {
+    pub tag: ValueTag,
+    pub name: AttributeName,
+    pub values: Vec<AttributeValue>,
+}
+
+impl Attribute {
+    fn decode_one(bytes: &Vec<u8>, offset: usize) -> (usize, bool, Option<Self>) {
+        let mut shifting_offset = offset;
+
+        let slice: [u8; 1] = bytes[shifting_offset..shifting_offset + 1]
+            .try_into()
+            .unwrap();
+        let raw_int = u8::from_be_bytes(slice);
+        shifting_offset += 1;
+
+        let decoded: Option<Self>;
+
+        let mut has_name = false;
+
+        if DelimiterTag::from_repr(raw_int as usize).is_some() {
+            // if reach any other delimiter tag, return
+            // (either a new attribute group or end-of-attributes)
+            decoded = None;
+            shifting_offset = offset;
+        } else {
+            // decode attribute-name
+            let (delta, name) = AttributeName::from_ipp(bytes, shifting_offset);
+            shifting_offset += delta;
+            has_name = !name.is_empty();
+
+            // decode actual value
+            let value_tag = ValueTag::from_repr(raw_int as usize).unwrap();
+            let (delta, value) = AttributeValue::from_ipp(bytes, shifting_offset, value_tag);
+            shifting_offset += delta;
+
+            decoded = Some(Attribute {
+                tag: value_tag,
+                name,
+                values: vec![value],
+            });
+        }
+
+        (shifting_offset - offset, has_name, decoded)
+    }
+
+    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Option<Self>) {
+        let (mut first_offset, _, first_attribute_opt) = Self::decode_one(bytes, offset);
+
+        let next_offset = offset + first_offset;
+
+        if let Some(mut first_attribute) = first_attribute_opt {
+            if next_offset > bytes.len() {
+                (0, None)
+            } else {
+                let (mut next_offset, mut has_name, mut next_attribute_opt) =
+                    Self::decode_one(bytes, next_offset);
+
+                loop {
+                    if let Some(mut next_attribute) = next_attribute_opt {
+                        if has_name || (offset + first_offset + next_offset >= bytes.len()) {
+                            break;
+                        }
+                        // add additional_value
+                        first_attribute.values.append(&mut next_attribute.values);
+
+                        // add to offset
+                        first_offset += next_offset;
+
+                        let next = Self::decode_one(bytes, offset + first_offset);
+                        next_offset = next.0;
+                        has_name = next.1;
+                        next_attribute_opt = next.2;
+                    } else {
+                        break;
+                    }
+                }
+
+                (first_offset, Some(first_attribute))
+            }
+        } else {
+            (0, None)
+        }
+    }
+
+    fn to_ipp(&self) -> Vec<u8> {
+        let mut bytes: Vec<u8> = Vec::with_capacity(self.ipp_len());
+        if self.values.len() > 0 {
+            for i in 0..self.values.len() {
+                // write tag
+                bytes.append(&mut (self.tag as u8).to_be_bytes().to_vec());
+
+                // write name
+                if i == 0 {
+                    // first attribute write name-length and name
+                    bytes.append(&mut self.name.to_ipp());
+                } else {
+                    // next attributes only write 2 bytes of name-length (0x00)
+                    bytes.append(&mut String::from("").to_ipp());
+                }
+
+                // write value
+                let value = &self.values[i];
+                bytes.append(&mut value.to_ipp());
+            }
+        }
+        bytes
+    }
+
+    fn ipp_len(&self) -> usize {
+        if self.values.len() == 0 {
+            0
+        } else {
+            // each value has a 1 byte value-tag
+            let tag_len = self.values.len();
+
+            let name_len = self.name.to_string().ipp_len() +    // first value has name-length and name
+            (self.values.len() - 1) * 2; // next values only has 2 bytes of name-length (0x00)
+
+            let mut value_len: usize = 0;
+            for value in &self.values {
+                value_len += value.ipp_len();
+            }
+
+            tag_len + name_len + value_len
+        }
+    }
+}
