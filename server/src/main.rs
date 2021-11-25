@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 
 use chrono::Utc;
 
-use ipp_encoder::{IppEncode, TextWithLang};
+use ipp_encoder::{IppEncode, Operation, TextWithLang};
 
 fn test_encoding<T: IppEncode + std::fmt::Debug>(raw: T) {
     println!("raw: {:?}", raw);
@@ -16,56 +16,58 @@ fn test_encoding<T: IppEncode + std::fmt::Debug>(raw: T) {
     println!("decoded: {:?}", decoded);
 }
 
+fn test() {
+    // // i32
+    // test_encoding(32 as i32);
+
+    // // String
+    // let text_wo_lang = String::from("Text Without Lang");
+    // test_encoding(text_wo_lang);
+
+    // // bool
+    // test_encoding(true);
+    // test_encoding(false);
+
+    // // TextWithLang
+    // let text_with_lang = TextWithLang {
+    //     lang: String::from("en"),
+    //     text: String::from("Text With Lang"),
+    // };
+    // test_encoding(text_with_lang);
+
+    // // DateTime
+    // let date = Utc::now();
+    // test_encoding(date);o
+}
+
 #[tokio::main]
 async fn main() {
-    // i32
-    test_encoding(32 as i32);
+    let address = SocketAddr::from(([127, 0, 0, 1], 6363));
 
-    // String
-    let text_wo_lang = String::from("Text Without Lang");
-    test_encoding(text_wo_lang);
+    let make_svc = make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(http_handler)) });
 
-    // bool
-    test_encoding(true);
-    test_encoding(false);
+    let server = Server::bind(&address).serve(make_svc);
+    let graceful = server.with_graceful_shutdown(shutdown_signal());
 
-    // TextWithLang
-    let text_with_lang = TextWithLang {
-        lang: String::from("en"),
-        text: String::from("Text With Lang"),
-    };
-    test_encoding(text_with_lang);
+    let dns_service = DNSServiceBuilder::new("_ipp._tcp", 6363)
+        .with_name("Rust IPP Printer")
+        .register();
 
-    // DateTime
-    let date = Utc::now();
-    test_encoding(date);
+    match dns_service {
+        Ok(dns) => {
+            println!("DNS service registered: {:?}", dns);
 
-    // let address = SocketAddr::from(([127, 0, 0, 1], 6363));
-
-    // let make_svc = make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(http_handler)) });
-
-    // let server = Server::bind(&address).serve(make_svc);
-    // let graceful = server.with_graceful_shutdown(shutdown_signal());
-
-    // let dns_service = DNSServiceBuilder::new("_ipp._tcp", 6363)
-    //     .with_name("Rust IPP Printer")
-    //     .register();
-
-    // match dns_service {
-    //     Ok(dns) => {
-    //         println!("DNS service registered: {:?}", dns);
-
-    //         if let Err(e) = graceful.await {
-    //             eprintln!("server error: {}", e);
-    //         } else {
-    //             println!("Dropping... {:?}", dns);
-    //             println!("gracefully shut down!");
-    //         }
-    //     }
-    //     Err(e) => {
-    //         eprintln!("Error registering dns service: {:?}", e);
-    //     }
-    // }
+            if let Err(e) = graceful.await {
+                eprintln!("server error: {}", e);
+            } else {
+                println!("Dropping... {:?}", dns);
+                println!("gracefully shut down!");
+            }
+        }
+        Err(e) => {
+            eprintln!("Error registering dns service: {:?}", e);
+        }
+    }
 }
 
 async fn http_handler(req: Request<Body>) -> Result<Response<Body>, Infallible> {
@@ -78,9 +80,15 @@ async fn http_handler(req: Request<Body>) -> Result<Response<Body>, Infallible> 
             *res.body_mut() = Body::from("IPP Server");
         }
         (&Method::POST, "/") => {
-            let bytes = hyper::body::to_bytes(req.into_body()).await.unwrap();
-            let vec = bytes.to_vec();
-            println!("bytes {:?}", vec);
+            let bytes = hyper::body::to_bytes(req.into_body())
+                .await
+                .unwrap()
+                .to_vec();
+
+            let (_, operation) = Operation::from_ipp(&bytes, 0);
+
+            println!("bytes {}", operation.to_json());
+            println!("operation-id: {:?}", operation.operation_id());
         }
         _ => {
             *res.status_mut() = StatusCode::NOT_FOUND;

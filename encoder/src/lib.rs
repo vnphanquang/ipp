@@ -1,4 +1,6 @@
 use chrono::{DateTime, Datelike, Offset, TimeZone, Timelike, Utc};
+use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DisplayFromStr};
 use std::{collections::HashMap, str::FromStr};
 use strum_macros::{EnumString, FromRepr};
 
@@ -44,7 +46,19 @@ pub enum OperationID {
 }
 
 /// ref: [rfc8010](https://datatracker.ietf.org/doc/html/rfc8010#section-3.5.1)
-#[derive(FromRepr, Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(
+    strum_macros::Display,
+    EnumString,
+    Serialize,
+    Deserialize,
+    FromRepr,
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Hash,
+)]
 pub enum DelimiterTag {
     OperationAttributes = 0x01,
     JobAttributes = 0x02,
@@ -54,7 +68,7 @@ pub enum DelimiterTag {
 }
 
 /// ref: [rfc8010](https://datatracker.ietf.org/doc/html/rfc8010#section-3.5.2)
-#[derive(FromRepr, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Serialize, Deserialize, FromRepr, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ValueTag {
     // "out-of-band" values - "Out-of-Band Attribute Value Tags" registry
     Unsupported = 0x10,
@@ -178,7 +192,18 @@ pub enum StatusCode {
 }
 
 /// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4)
-#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(
+    Serialize,
+    Deserialize,
+    EnumString,
+    strum_macros::Display,
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Hash,
+)]
 pub enum PrinterAttribute {
     #[strum(serialize = "printer-uri-supported")]
     PrinterUriSupported,
@@ -256,7 +281,18 @@ pub enum PrinterAttribute {
     PagesPerMinuteColor,
 }
 
-#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(
+    Serialize,
+    Deserialize,
+    EnumString,
+    strum_macros::Display,
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Hash,
+)]
 pub enum JobTemplateAttribute {
     #[strum(serialize = "job-priority")]
     JobPriority,
@@ -286,7 +322,18 @@ pub enum JobTemplateAttribute {
     PrintQuality,
 }
 
-#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(
+    Serialize,
+    Deserialize,
+    EnumString,
+    strum_macros::Display,
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Hash,
+)]
 pub enum JobAttribute {
     #[strum(serialize = "job-uri")]
     JobUri,
@@ -346,7 +393,18 @@ pub enum JobAttribute {
     JobMediaSheetsCompleted,
 }
 
-#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(
+    Serialize,
+    Deserialize,
+    EnumString,
+    strum_macros::Display,
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Hash,
+)]
 pub enum OperationAttribute {
     #[strum(serialize = "requested-attributes")]
     RequestedAttributes,
@@ -458,7 +516,7 @@ impl IppEncode for bool {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct TextWithLang {
     pub lang: String,
     pub text: String,
@@ -614,6 +672,7 @@ impl IppEncode for DateTime<Utc> {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub enum AttributeValue {
     TextWithoutLang(String),
     Number(i32),
@@ -678,7 +737,7 @@ impl AttributeValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AttributeName {
     Operation(OperationAttribute),
     Printer(PrinterAttribute),
@@ -687,21 +746,30 @@ pub enum AttributeName {
     Unsupported(String),
 }
 
-impl AttributeName {
-    pub fn from_str(str: &str) -> Self {
+impl std::str::FromStr for AttributeName {
+    type Err = AttributeNameParseError;
+    fn from_str(str: &str) -> Result<Self, Self::Err> {
         if let Ok(n) = OperationAttribute::from_str(str) {
-            Self::Operation(n)
+            Ok(Self::Operation(n))
         } else if let Ok(n) = PrinterAttribute::from_str(str) {
-            Self::Printer(n)
+            Ok(Self::Printer(n))
         } else if let Ok(n) = JobTemplateAttribute::from_str(str) {
-            Self::JobTemplate(n)
+            Ok(Self::JobTemplate(n))
         } else if let Ok(n) = JobAttribute::from_str(str) {
-            Self::Job(n)
+            Ok(Self::Job(n))
         } else {
-            Self::Unsupported(String::from(str))
+            Ok(Self::Unsupported(String::from(str)))
         }
     }
+}
 
+impl std::fmt::Display for AttributeName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.to_string())
+    }
+}
+
+impl AttributeName {
     pub fn to_string(&self) -> String {
         match self {
             Self::Operation(attr) => attr.to_string(),
@@ -724,7 +792,7 @@ impl AttributeName {
 impl IppEncode for AttributeName {
     fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
         let (delta, raw_name) = String::from_ipp(bytes, offset);
-        (delta, Self::from_str(&raw_name))
+        (delta, Self::from_str(&raw_name).unwrap())
     }
 
     fn to_ipp(&self) -> Vec<u8> {
@@ -736,6 +804,7 @@ impl IppEncode for AttributeName {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Attribute {
     pub tag: ValueTag,
     pub name: AttributeName,
@@ -865,8 +934,11 @@ impl Attribute {
     }
 }
 
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct AttributeGroup {
     pub tag: DelimiterTag,
+    #[serde_as(as = "HashMap<DisplayFromStr, _>")]
     pub attributes: HashMap<AttributeName, Attribute>,
 }
 
@@ -957,31 +1029,19 @@ impl IppEncode for HashMap<DelimiterTag, AttributeGroup> {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct IppVersion {
     pub major: u8,
     pub minor: u8,
 }
 
-// pub struct OperationBase {
-//     pub version: IppVersion,
-//     pub request_id: u8,
-//     pub attribute_groups: HashMap<DelimiterTag, AttributeGroup>,
-// }
-
-// pub struct OperationRequest {
-//     pub base: OperationBase,
-//     pub operation_id: OperationID,
-// }
-
-// pub struct OperationResponse {
-//     pub base: OperationBase,
-//     pub status_code: StatusCode,
-// }
-
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Operation {
     pub version: IppVersion,
     pub operation_id_or_status_code: u16,
     pub request_id: u32,
+    #[serde_as(as = "HashMap<DisplayFromStr, _>")]
     pub attribute_groups: HashMap<DelimiterTag, AttributeGroup>,
 }
 
@@ -990,22 +1050,30 @@ impl IppEncode for Operation {
         let mut shifting_offset = offset;
 
         // read version.major
-        let slice: [u8; 1] = bytes[offset..offset + 1].try_into().unwrap();
+        let slice: [u8; 1] = bytes[shifting_offset..shifting_offset + 1]
+            .try_into()
+            .unwrap();
         let major = u8::from_be_bytes(slice);
         shifting_offset += slice.len();
 
         // read version.minor
-        let slice: [u8; 1] = bytes[offset..offset + 1].try_into().unwrap();
+        let slice: [u8; 1] = bytes[shifting_offset..shifting_offset + 1]
+            .try_into()
+            .unwrap();
         let minor = u8::from_be_bytes(slice);
         shifting_offset += slice.len();
 
         // read operation-id or status-code
-        let slice: [u8; 2] = bytes[offset..offset + 1].try_into().unwrap();
+        let slice: [u8; 2] = bytes[shifting_offset..shifting_offset + 2]
+            .try_into()
+            .unwrap();
         let operation_id_or_status_code = u16::from_be_bytes(slice);
         shifting_offset += slice.len();
 
         // read request-id
-        let slice: [u8; 4] = bytes[offset..offset + 1].try_into().unwrap();
+        let slice: [u8; 4] = bytes[shifting_offset..shifting_offset + 4]
+            .try_into()
+            .unwrap();
         let request_id = u32::from_be_bytes(slice);
         shifting_offset += slice.len();
 
@@ -1066,5 +1134,22 @@ impl Operation {
     }
     pub fn status_code(&self) -> Option<StatusCode> {
         StatusCode::from_repr(self.operation_id_or_status_code as usize)
+    }
+
+    pub fn to_json(&self) -> String {
+        // FIXME: handle error gracefully
+        serde_json::to_string(self).unwrap()
+    }
+}
+
+// errors
+#[derive(Debug)]
+pub struct AttributeNameParseError {
+    message: String,
+}
+
+impl std::fmt::Display for AttributeNameParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "AttributeNameParseError: {}", &self.message)
     }
 }
