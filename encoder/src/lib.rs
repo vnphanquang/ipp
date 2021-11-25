@@ -44,7 +44,7 @@ pub enum OperationID {
 }
 
 /// ref: [rfc8010](https://datatracker.ietf.org/doc/html/rfc8010#section-3.5.1)
-#[derive(FromRepr, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(FromRepr, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum DelimiterTag {
     OperationAttributes = 0x01,
     JobAttributes = 0x02,
@@ -178,7 +178,7 @@ pub enum StatusCode {
 }
 
 /// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4)
-#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum PrinterAttribute {
     #[strum(serialize = "printer-uri-supported")]
     PrinterUriSupported,
@@ -256,7 +256,7 @@ pub enum PrinterAttribute {
     PagesPerMinuteColor,
 }
 
-#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum JobTemplateAttribute {
     #[strum(serialize = "job-priority")]
     JobPriority,
@@ -286,7 +286,7 @@ pub enum JobTemplateAttribute {
     PrintQuality,
 }
 
-#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum JobAttribute {
     #[strum(serialize = "job-uri")]
     JobUri,
@@ -346,7 +346,7 @@ pub enum JobAttribute {
     JobMediaSheetsCompleted,
 }
 
-#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum OperationAttribute {
     #[strum(serialize = "requested-attributes")]
     RequestedAttributes,
@@ -356,31 +356,6 @@ pub enum OperationAttribute {
     AttributesCharset,
     #[strum(serialize = "attributes-natural-language")]
     AttributesNaturalLanguage,
-}
-pub struct AttributeGroup {
-    pub tag: DelimiterTag,
-    pub attributes: HashMap<AttributeName, Attribute>,
-}
-
-pub struct OperationVersion {
-    pub major: u8,
-    pub minor: u8,
-}
-
-pub struct OperationBase {
-    pub version: OperationVersion,
-    pub request_id: u8,
-    pub attribute_groups: HashMap<DelimiterTag, AttributeGroup>,
-}
-
-pub struct OperationRequest {
-    pub base: OperationBase,
-    pub operation_id: OperationID,
-}
-
-pub struct OperationResponse {
-    pub base: OperationBase,
-    pub status_code: StatusCode,
 }
 
 pub trait IppEncode {
@@ -639,10 +614,6 @@ impl IppEncode for DateTime<Utc> {
     }
 }
 
-pub enum IppError {
-    AttributeNameNotSupported,
-}
-
 pub enum AttributeValue {
     TextWithoutLang(String),
     Number(i32),
@@ -707,7 +678,7 @@ impl AttributeValue {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AttributeName {
     Operation(OperationAttribute),
     Printer(PrinterAttribute),
@@ -891,5 +862,209 @@ impl Attribute {
 
             tag_len + name_len + value_len
         }
+    }
+}
+
+pub struct AttributeGroup {
+    pub tag: DelimiterTag,
+    pub attributes: HashMap<AttributeName, Attribute>,
+}
+
+impl IppEncode for HashMap<DelimiterTag, AttributeGroup> {
+    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
+        let mut decoded: Self = HashMap::new();
+
+        let mut shifting_offset = offset;
+
+        let read_tag = |bytes: &Vec<u8>, offset: usize| -> (usize, Option<DelimiterTag>) {
+            let slice: [u8; 1] = bytes[offset..offset + 1].try_into().unwrap();
+            let raw_int = u8::from_be_bytes(slice);
+            (1, DelimiterTag::from_repr(raw_int as usize))
+        };
+
+        let (delta, mut tag_opt) = read_tag(bytes, shifting_offset);
+        shifting_offset += delta;
+
+        let mut attributes: HashMap<AttributeName, Attribute> = HashMap::new();
+
+        while shifting_offset < bytes.len() {
+            if let Some(tag) = tag_opt {
+                if tag == DelimiterTag::EndOfAttributes {
+                    break;
+                }
+
+                // read attributes in group
+                let (mut delta, mut attribute_opt) = Attribute::from_ipp(bytes, shifting_offset);
+                loop {
+                    if shifting_offset > bytes.len() {
+                        break;
+                    }
+
+                    if let Some(attribute) = attribute_opt {
+                        attributes.insert(attribute.name.clone(), attribute);
+                        shifting_offset += delta;
+                        let next = Attribute::from_ipp(bytes, shifting_offset);
+                        delta = next.0;
+                        attribute_opt = next.1;
+                    } else {
+                        break;
+                    }
+                }
+
+                decoded.insert(tag, AttributeGroup { tag, attributes });
+
+                attributes = HashMap::new();
+                let next_tag = read_tag(bytes, shifting_offset);
+                shifting_offset += next_tag.0;
+                tag_opt = next_tag.1;
+            } else {
+                break;
+            }
+        }
+
+        (shifting_offset - offset, decoded)
+    }
+
+    fn to_ipp(&self) -> Vec<u8> {
+        let mut vec: Vec<u8> = Vec::with_capacity(self.ipp_len());
+
+        for (_, group) in self {
+            // write delimiter tag
+            vec.append(&mut (group.tag as u8).to_be_bytes().to_vec());
+
+            for (_, attribute) in &group.attributes {
+                // write attribute
+                vec.append(&mut attribute.to_ipp());
+            }
+        }
+
+        vec
+    }
+
+    fn ipp_len(&self) -> usize {
+        let mut len: usize = 0;
+
+        for (_, group) in self {
+            len += 1; // delimiter tag
+            for (_, attribute) in &group.attributes {
+                len += attribute.ipp_len();
+            }
+        }
+
+        len += 1; // end-of-attributes tag
+
+        len
+    }
+}
+
+pub struct IppVersion {
+    pub major: u8,
+    pub minor: u8,
+}
+
+// pub struct OperationBase {
+//     pub version: IppVersion,
+//     pub request_id: u8,
+//     pub attribute_groups: HashMap<DelimiterTag, AttributeGroup>,
+// }
+
+// pub struct OperationRequest {
+//     pub base: OperationBase,
+//     pub operation_id: OperationID,
+// }
+
+// pub struct OperationResponse {
+//     pub base: OperationBase,
+//     pub status_code: StatusCode,
+// }
+
+pub struct Operation {
+    pub version: IppVersion,
+    pub operation_id_or_status_code: u16,
+    pub request_id: u32,
+    pub attribute_groups: HashMap<DelimiterTag, AttributeGroup>,
+}
+
+impl IppEncode for Operation {
+    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
+        let mut shifting_offset = offset;
+
+        // read version.major
+        let slice: [u8; 1] = bytes[offset..offset + 1].try_into().unwrap();
+        let major = u8::from_be_bytes(slice);
+        shifting_offset += slice.len();
+
+        // read version.minor
+        let slice: [u8; 1] = bytes[offset..offset + 1].try_into().unwrap();
+        let minor = u8::from_be_bytes(slice);
+        shifting_offset += slice.len();
+
+        // read operation-id or status-code
+        let slice: [u8; 2] = bytes[offset..offset + 1].try_into().unwrap();
+        let operation_id_or_status_code = u16::from_be_bytes(slice);
+        shifting_offset += slice.len();
+
+        // read request-id
+        let slice: [u8; 4] = bytes[offset..offset + 1].try_into().unwrap();
+        let request_id = u32::from_be_bytes(slice);
+        shifting_offset += slice.len();
+
+        // read attribute groups
+        let (delta, attribute_groups): (usize, HashMap<DelimiterTag, AttributeGroup>) =
+            HashMap::from_ipp(bytes, shifting_offset);
+        shifting_offset += delta;
+
+        (
+            shifting_offset - offset,
+            Self {
+                version: IppVersion { major, minor },
+                request_id,
+                operation_id_or_status_code,
+                attribute_groups,
+            },
+        )
+    }
+
+    fn to_ipp(&self) -> Vec<u8> {
+        // write version major
+        let major_bytes = self.version.major.to_be_bytes().to_vec();
+
+        // write version minor
+        let minor_bytes = self.version.minor.to_be_bytes().to_vec();
+
+        // write operation-id or status-code
+        let operation_or_status_bytes = self.operation_id_or_status_code.to_be_bytes().to_vec();
+
+        // write request-id
+        let request_id_bytes = self.request_id.to_be_bytes().to_vec();
+
+        // write attribute groups
+        let attribute_groups_bytes = self.attribute_groups.to_ipp();
+
+        [
+            major_bytes,
+            minor_bytes,
+            operation_or_status_bytes,
+            request_id_bytes,
+            attribute_groups_bytes,
+        ]
+        .concat()
+    }
+
+    fn ipp_len(&self) -> usize {
+        self.version.major.to_be_bytes().len()
+            + self.version.minor.to_be_bytes().len()
+            + self.operation_id_or_status_code.to_be_bytes().len()
+            + self.request_id.to_be_bytes().len()
+            + self.attribute_groups.ipp_len()
+    }
+}
+
+impl Operation {
+    pub fn operation_id(&self) -> Option<OperationID> {
+        OperationID::from_repr(self.operation_id_or_status_code as usize)
+    }
+    pub fn status_code(&self) -> Option<StatusCode> {
+        StatusCode::from_repr(self.operation_id_or_status_code as usize)
     }
 }
