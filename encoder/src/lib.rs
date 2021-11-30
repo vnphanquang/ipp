@@ -131,6 +131,13 @@ pub enum UriAuthenticationSupportedKeyword {
     Certificate,
 }
 
+/// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4.12)
+#[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
+pub enum PrinterStateReasonKeyword {
+    #[strum(serialize = "none")]
+    None,
+}
+
 /// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4.32)
 #[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PdlOverrideSupportedKeyword {
