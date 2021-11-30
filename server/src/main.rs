@@ -1,9 +1,10 @@
 use astro_dnssd::DNSServiceBuilder;
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use hyper::{Body, Method, Request, Response, Server};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
@@ -48,15 +49,35 @@ fn test() {
 
 #[tokio::main]
 async fn main() {
-    let address = SocketAddr::from(([127, 0, 0, 1], 6363));
+    const PORT: u16 = 6363;
 
-    let make_svc = make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(http_handler)) });
+    let address = SocketAddr::from(([127, 0, 0, 1], PORT));
+
+    let hostname = gethostname::gethostname()
+        .to_str()
+        .unwrap_or("127.0.0.1")
+        .to_string();
+    let uri = format!("ipp//{}:{}/", hostname, PORT);
+
+    const NAME: &str = "Rust IPP Printer";
+
+    let printer = Arc::new(IppPrinter::new(&uri, &NAME));
+
+    let make_svc = make_service_fn(move |_| {
+        let inner_printer = printer.clone();
+        async move {
+            Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
+                let inner_printer = inner_printer.clone();
+                async move { http_handler(req, inner_printer).await }
+            }))
+        }
+    });
 
     let server = Server::bind(&address).serve(make_svc);
     let graceful = server.with_graceful_shutdown(shutdown_signal());
 
     let dns_service = DNSServiceBuilder::new("_ipp._tcp", 6363)
-        .with_name("Rust IPP Printer")
+        .with_name(&NAME)
         .register();
 
     match dns_service {
@@ -76,10 +97,17 @@ async fn main() {
     }
 }
 
-async fn http_handler(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+async fn http_handler(
+    req: Request<Body>,
+    printer: Arc<IppPrinter>,
+) -> Result<Response<Body>, Infallible> {
     let mut res = Response::new(Body::empty());
 
     println!("Requested in {}, {}", req.method(), req.uri().path());
+    println!(
+        "IPP Printer - printer_uri_supported: {:?}",
+        printer.printer_uri_supported()
+    );
 
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/") => {
@@ -91,14 +119,13 @@ async fn http_handler(req: Request<Body>) -> Result<Response<Body>, Infallible> 
                 .unwrap()
                 .to_vec();
 
-            let (delta, operation) = Operation::from_ipp(&bytes, 0);
+            let bytes = printer.handle(&bytes);
 
-            println!("len: bytes {} vs delta {}", bytes.len(), delta);
-            println!("decoded request {}", operation.to_json());
-            println!("operation-id: {:?}", operation.operation_id());
+            *res.status_mut() = hyper::StatusCode::OK;
+            *res.body_mut() = bytes.into();
         }
         _ => {
-            *res.status_mut() = StatusCode::NOT_FOUND;
+            *res.status_mut() = hyper::StatusCode::NOT_FOUND;
         }
     }
 
@@ -130,6 +157,28 @@ impl IppPrinter {
             state: PrinterState::Stopped,
             started_at: Utc::now(),
             jobs: Vec::new(),
+        }
+    }
+
+    pub fn handle(&self, bytes: &Vec<u8>) -> Vec<u8> {
+        let (_, request) = Operation::from_ipp(&bytes, 0);
+
+        println!("Request: {:?}", request);
+
+        match request.operation_id().unwrap() {
+            OperationID::ValidateJob => {
+                let response = Operation {
+                    version: request.version,
+                    request_id: request.request_id,
+                    operation_id_or_status_code: ipp_encoder::StatusCode::SuccessfulOk as u16,
+                    attribute_groups: HashMap::new(),
+                };
+
+                println!("Response: {:?}", response);
+
+                response.to_ipp()
+            }
+            _ => Vec::new(),
         }
     }
 
