@@ -1,5 +1,7 @@
 # Logs
 *.log
+.log/
+
 # dotenv environment variables file
 .env
 .envrc

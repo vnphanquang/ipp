@@ -523,7 +523,7 @@ impl IppEncode for bool {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TextWithLang {
     pub lang: String,
     pub text: String,
@@ -679,7 +679,7 @@ impl IppEncode for DateTime<Utc> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum AttributeValue {
     TextWithoutLang(String),
     Number(i32),
@@ -1007,7 +1007,21 @@ impl IppEncode for HashMap<DelimiterTag, AttributeGroup> {
     fn to_ipp(&self) -> Vec<u8> {
         let mut vec: Vec<u8> = Vec::with_capacity(self.ipp_len());
 
-        for (_, group) in self {
+        let mut groups: Vec<&AttributeGroup> = Vec::new();
+        if let Some(group) = self.get(&DelimiterTag::OperationAttributes) {
+            groups.push(group);
+        }
+        if let Some(group) = self.get(&DelimiterTag::UnsupportedAttributes) {
+            groups.push(group);
+        }
+        if let Some(group) = self.get(&DelimiterTag::PrinterAttributes) {
+            groups.push(group);
+        }
+        if let Some(group) = self.get(&DelimiterTag::JobAttributes) {
+            groups.push(group);
+        }
+
+        for group in groups {
             // write delimiter tag
             vec.append(&mut (group.tag as u8).to_be_bytes().to_vec());
 
@@ -1016,6 +1030,9 @@ impl IppEncode for HashMap<DelimiterTag, AttributeGroup> {
                 vec.append(&mut attribute.to_ipp());
             }
         }
+
+        // end-of-attributes tag
+        vec.append(&mut (DelimiterTag::EndOfAttributes as u8).to_be_bytes().to_vec());
 
         vec
     }
@@ -1036,7 +1053,7 @@ impl IppEncode for HashMap<DelimiterTag, AttributeGroup> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub struct IppVersion {
     pub major: u8,
     pub minor: u8,

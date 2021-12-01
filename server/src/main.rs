@@ -4,48 +4,17 @@ use hyper::{Body, Method, Request, Response, Server};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
 use ipp_encoder::{
     Attribute, AttributeGroup, AttributeName, AttributeValue, CompressionSupportedKeyword,
-    DelimiterTag, IppEncode, Operation, OperationID, PdlOverrideSupportedKeyword, PrinterAttribute,
-    PrinterState, PrinterStateReasonKeyword, TextWithLang, UriAuthenticationSupportedKeyword,
-    UriSecuritySupportedKeyword, ValueTag,
+    DelimiterTag, IppEncode, IppVersion, Operation, OperationAttribute, OperationID,
+    PdlOverrideSupportedKeyword, PrinterAttribute, PrinterState, PrinterStateReasonKeyword,
+    TextWithLang, UriAuthenticationSupportedKeyword, UriSecuritySupportedKeyword, ValueTag,
 };
-
-fn test_encoding<T: IppEncode + std::fmt::Debug>(raw: T) {
-    println!("raw: {:?}", raw);
-    let encoded = raw.to_ipp();
-    println!("encoded: {:?}", encoded);
-    let decoded = T::from_ipp(&encoded, 0);
-    println!("decoded: {:?}", decoded);
-}
-
-fn test() {
-    // // i32
-    // test_encoding(32 as i32);
-
-    // // String
-    // let text_wo_lang = String::from("Text Without Lang");
-    // test_encoding(text_wo_lang);
-
-    // // bool
-    // test_encoding(true);
-    // test_encoding(false);
-
-    // // TextWithLang
-    // let text_with_lang = TextWithLang {
-    //     lang: String::from("en"),
-    //     text: String::from("Text With Lang"),
-    // };
-    // test_encoding(text_with_lang);
-
-    // // DateTime
-    // let date = Utc::now();
-    // test_encoding(date);o
-}
 
 #[tokio::main]
 async fn main() {
@@ -103,9 +72,10 @@ async fn http_handler(
 ) -> Result<Response<Body>, Infallible> {
     let mut res = Response::new(Body::empty());
 
+    println!("============================");
     println!("Requested in {}, {}", req.method(), req.uri().path());
     println!(
-        "IPP Printer - printer_uri_supported: {:?}",
+        "IPP Printer - printer_uri_supported: {:?}\n",
         printer.printer_uri_supported()
     );
 
@@ -121,8 +91,14 @@ async fn http_handler(
 
             let bytes = printer.handle(&bytes);
 
+            // let (_, operation) = Operation::from_ipp(&bytes, 0);
+            // println!("\nResponse Operation Counter: {}", operation.to_json());
+
             *res.status_mut() = hyper::StatusCode::OK;
             *res.body_mut() = bytes.into();
+
+            println!("\nResponse Body: {:?}", *res.body());
+            println!("============================");
         }
         _ => {
             *res.status_mut() = hyper::StatusCode::NOT_FOUND;
@@ -154,7 +130,7 @@ impl IppPrinter {
         Self {
             uri: String::from(uri),
             name: String::from(name),
-            state: PrinterState::Stopped,
+            state: PrinterState::Idle,
             started_at: Utc::now(),
             jobs: Vec::new(),
         }
@@ -163,95 +139,137 @@ impl IppPrinter {
     pub fn handle(&self, bytes: &Vec<u8>) -> Vec<u8> {
         let (_, request) = Operation::from_ipp(&bytes, 0);
 
-        println!("Request: {:?}", request);
+        println!("\nRequest: {}", request.to_json());
+        println!("OperationID: {}\n", request.operation_id().unwrap() as i32);
 
-        match request.operation_id().unwrap() {
-            OperationID::ValidateJob => {
-                let response = Operation {
-                    version: request.version,
-                    request_id: request.request_id,
-                    operation_id_or_status_code: ipp_encoder::StatusCode::SuccessfulOk as u16,
-                    attribute_groups: HashMap::new(),
-                };
+        let mut response = Operation {
+            version: IppVersion { major: 1, minor: 1 },
+            request_id: request.request_id,
+            operation_id_or_status_code: ipp_encoder::StatusCode::SuccessfulOk as u16,
+            attribute_groups: HashMap::new(),
+        };
 
-                println!("Response: {:?}", response);
+        let operation_attribute_group = self.request_operation_attributes();
+        response
+            .attribute_groups
+            .insert(operation_attribute_group.tag, operation_attribute_group);
 
-                response.to_ipp()
-            }
-            _ => Vec::new(),
+        if request.version.major != 1 {
+            response.operation_id_or_status_code =
+                ipp_encoder::StatusCode::ServerErrorVersionNotSupported as u16;
+        } else {
+            match request.operation_id().unwrap() {
+                OperationID::GetPrinterAttributes
+                | OperationID::ValidateJob
+                | OperationID::PrintJob
+                | OperationID::CancelJob
+                | OperationID::GetJobAttributes
+                | OperationID::GetJobs => {
+                    if let Some((supported, unsupported)) =
+                        self.request_printer_attributes(&request)
+                    {
+                        // insert unsupported-attributes group
+                        let mut unsupported_group = AttributeGroup {
+                            tag: DelimiterTag::UnsupportedAttributes,
+                            attributes: HashMap::new(),
+                        };
+                        for value in unsupported {
+                            let attribute = Attribute {
+                                tag: ValueTag::Unsupported,
+                                name: AttributeName::Unsupported(value),
+                                values: vec![AttributeValue::TextWithoutLang(String::from(
+                                    "unsupported",
+                                ))],
+                            };
+                            unsupported_group
+                                .attributes
+                                .insert(attribute.name.clone(), attribute);
+                        }
+                        response
+                            .attribute_groups
+                            .insert(unsupported_group.tag, unsupported_group);
+
+                        // insert printer-attributes group
+                        let printer_attribute_group = AttributeGroup {
+                            tag: DelimiterTag::PrinterAttributes,
+                            attributes: supported
+                                .into_iter()
+                                .map(|attr| (attr.name.clone(), attr))
+                                .collect(),
+                        };
+                        response
+                            .attribute_groups
+                            .insert(printer_attribute_group.tag, printer_attribute_group);
+                    }
+                }
+                _ => {
+                    response.operation_id_or_status_code =
+                        ipp_encoder::StatusCode::ServerErrorOperationNotSupported as u16;
+                }
+            };
+        }
+
+        println!("\nResponse: {}\n", response.to_json());
+
+        response.to_ipp()
+    }
+}
+
+// operation attribute constructor
+impl IppPrinter {
+    fn printer_uri(&self) -> Attribute {
+        Attribute {
+            tag: ValueTag::Uri,
+            name: AttributeName::Operation(OperationAttribute::PrinterUri),
+            values: vec![AttributeValue::TextWithoutLang(self.uri.clone())],
         }
     }
 
-    fn intrinsic_attributes(&self) -> HashMap<DelimiterTag, AttributeGroup> {
-        let printer_uri_supported = self.printer_uri_supported();
-        let uri_security_supported = self.uri_security_supported();
-        let uri_authentication_supported = self.uri_authentication_supported();
-        let printer_name = self.printer_name();
-        let printer_state_reasons = self.printer_state_reasons();
-        let printer_state = self.printer_state();
-        let operation_supported = self.operation_supported();
-        let charset_configured = self.charset_configured();
-        let charset_supported = self.charset_supported();
-        let natural_language_configured = self.natural_language_configured();
-        let generated_natural_language_supported = self.generated_natural_language_supported();
-        let document_format_default = self.document_format_default();
-        let document_format_supported = self.document_format_supported();
-        let printer_is_accepting_jobs = self.printer_is_accepting_jobs();
-        let queue_job_count = self.queue_job_count();
-        let pdl_override_supported = self.pdl_override_supported();
-        let printer_up_time = self.printer_up_time();
-        let printer_current_time = self.printer_current_time();
-        let compression_supported = self.compression_supported();
+    fn attributes_charset(&self) -> Attribute {
+        Attribute {
+            tag: ValueTag::Charset,
+            name: AttributeName::Operation(OperationAttribute::AttributesCharset),
+            values: vec![AttributeValue::TextWithoutLang(String::from("utf-8"))],
+        }
+    }
 
-        let printer_attribute_group = AttributeGroup {
-            tag: DelimiterTag::PrinterAttributes,
+    fn attributes_natural_language(&self) -> Attribute {
+        Attribute {
+            tag: ValueTag::NaturalLanguage,
+            name: AttributeName::Operation(OperationAttribute::AttributesNaturalLanguage),
+            values: vec![AttributeValue::TextWithoutLang(String::from("en-US"))],
+        }
+    }
+
+    fn request_operation_attributes(&self) -> AttributeGroup {
+        let printer_uri = self.printer_uri();
+        let attributes_charset = self.attributes_charset();
+        let attributes_natural_language = self.attributes_natural_language();
+
+        AttributeGroup {
+            tag: DelimiterTag::OperationAttributes,
             attributes: HashMap::from([
-                (printer_uri_supported.name.clone(), printer_uri_supported),
-                (uri_security_supported.name.clone(), uri_security_supported),
+                (printer_uri.name.clone(), printer_uri),
+                (attributes_charset.name.clone(), attributes_charset),
                 (
-                    uri_authentication_supported.name.clone(),
-                    uri_authentication_supported,
+                    attributes_natural_language.name.clone(),
+                    attributes_natural_language,
                 ),
-                (printer_name.name.clone(), printer_name),
-                (printer_state.name.clone(), printer_state),
-                (printer_state_reasons.name.clone(), printer_state_reasons),
-                (operation_supported.name.clone(), operation_supported),
-                (charset_configured.name.clone(), charset_configured),
-                (charset_supported.name.clone(), charset_supported),
-                (
-                    natural_language_configured.name.clone(),
-                    natural_language_configured,
-                ),
-                (
-                    generated_natural_language_supported.name.clone(),
-                    generated_natural_language_supported,
-                ),
-                (
-                    document_format_default.name.clone(),
-                    document_format_default,
-                ),
-                (
-                    printer_is_accepting_jobs.name.clone(),
-                    printer_is_accepting_jobs,
-                ),
-                (
-                    document_format_supported.name.clone(),
-                    document_format_supported,
-                ),
-                (queue_job_count.name.clone(), queue_job_count),
-                (pdl_override_supported.name.clone(), pdl_override_supported),
-                (printer_up_time.name.clone(), printer_up_time),
-                (printer_current_time.name.clone(), printer_current_time),
-                (compression_supported.name.clone(), compression_supported),
             ]),
-        };
-
-        HashMap::from([(printer_attribute_group.tag, printer_attribute_group)])
+        }
     }
 }
 
 // intrinsic printer attribute constructor
 impl IppPrinter {
+    pub fn ipp_printer_versions_supported(&self) -> Attribute {
+        Attribute {
+            tag: ValueTag::Keyword,
+            name: AttributeName::Printer(PrinterAttribute::IppVersionsSupported),
+            values: vec![AttributeValue::TextWithoutLang(String::from("1.1"))],
+        }
+    }
+
     pub fn printer_uri_supported(&self) -> Attribute {
         Attribute {
             tag: ValueTag::Uri,
@@ -314,12 +332,12 @@ impl IppPrinter {
             tag: ValueTag::Enum,
             name: AttributeName::Printer(PrinterAttribute::OperationsSupported),
             values: vec![
-                // AttributeValue::Number(OperationID::PrintJob as i32),
+                AttributeValue::Number(OperationID::PrintJob as i32),
                 AttributeValue::Number(OperationID::ValidateJob as i32),
-                // AttributeValue::Number(OperationID::CancelJob as i32),
-                // AttributeValue::Number(OperationID::GetPrinterAttributes as i32),
-                // AttributeValue::Number(OperationID::GetJobAttributes as i32),
-                // AttributeValue::Number(OperationID::GetJobs as i32),
+                AttributeValue::Number(OperationID::CancelJob as i32),
+                AttributeValue::Number(OperationID::GetPrinterAttributes as i32),
+                AttributeValue::Number(OperationID::GetJobAttributes as i32),
+                AttributeValue::Number(OperationID::GetJobs as i32),
             ],
         }
     }
@@ -374,7 +392,7 @@ impl IppPrinter {
                 AttributeValue::TextWithoutLang(String::from("text/html")),
                 AttributeValue::TextWithoutLang(String::from("text/plain")),
                 AttributeValue::TextWithoutLang(String::from("application/vnd.hp-PCL")),
-                AttributeValue::TextWithoutLang(String::from("application?octet-stream")),
+                AttributeValue::TextWithoutLang(String::from("application/octet-stream")),
                 AttributeValue::TextWithoutLang(String::from("application/pdf")),
                 AttributeValue::TextWithoutLang(String::from("application/postscript")),
             ],
@@ -385,11 +403,12 @@ impl IppPrinter {
         Attribute {
             tag: ValueTag::Boolean,
             name: AttributeName::Printer(PrinterAttribute::PrinterIsAcceptingJobs),
+            // FIXME: when is printer not accepting jobs?
             values: vec![AttributeValue::Boolean(true)],
         }
     }
 
-    pub fn queue_job_count(&self) -> Attribute {
+    pub fn queued_job_count(&self) -> Attribute {
         Attribute {
             tag: ValueTag::Integer,
             name: AttributeName::Printer(PrinterAttribute::QueuedJobCount),
@@ -436,4 +455,179 @@ impl IppPrinter {
             ],
         }
     }
+
+    fn request_printer_attribute(&self, attribute_name: &str) -> Option<Attribute> {
+        match PrinterAttribute::from_str(attribute_name) {
+            Ok(printer_attr_name) => match printer_attr_name {
+                PrinterAttribute::IppVersionsSupported => {
+                    Some(self.ipp_printer_versions_supported())
+                }
+                PrinterAttribute::PrinterUriSupported => Some(self.printer_uri_supported()),
+                PrinterAttribute::UriSecuritySupported => Some(self.uri_security_supported()),
+                PrinterAttribute::UriAuthenticationSupported => {
+                    Some(self.uri_authentication_supported())
+                }
+                PrinterAttribute::PrinterName => Some(self.printer_name()),
+                PrinterAttribute::PrinterState => Some(self.printer_state()),
+                PrinterAttribute::PrinterStateReasons => Some(self.printer_state_reasons()),
+                PrinterAttribute::OperationsSupported => Some(self.operation_supported()),
+                PrinterAttribute::CharsetConfigured => Some(self.charset_configured()),
+                PrinterAttribute::CharsetSupported => Some(self.charset_supported()),
+                PrinterAttribute::NaturalLanguageConfigured => {
+                    Some(self.natural_language_configured())
+                }
+                PrinterAttribute::GeneratedNaturalLanguageSupported => {
+                    Some(self.generated_natural_language_supported())
+                }
+                PrinterAttribute::DocumentFormatDefault => Some(self.document_format_default()),
+                PrinterAttribute::DocumentFormatSupported => Some(self.document_format_supported()),
+                PrinterAttribute::PrinterIsAcceptingJobs => Some(self.printer_is_accepting_jobs()),
+                PrinterAttribute::QueuedJobCount => Some(self.queued_job_count()),
+                PrinterAttribute::PdlOverrideSupported => Some(self.pdl_override_supported()),
+                PrinterAttribute::PrinterUpTime => Some(self.printer_up_time()),
+                PrinterAttribute::PrinterCurrentTime => Some(self.printer_current_time()),
+                PrinterAttribute::CompressionSupported => Some(self.compression_supported()),
+                _ => None,
+            },
+            Err(_) => None,
+        }
+    }
+
+    fn request_printer_attributes(
+        &self,
+        request: &Operation,
+    ) -> Option<(Vec<Attribute>, Vec<String>)> {
+        match request
+            .attribute_groups
+            .get(&DelimiterTag::OperationAttributes)
+        {
+            Some(operation_attribute_group) => {
+                match operation_attribute_group
+                    .attributes
+                    .get(&AttributeName::Operation(
+                        OperationAttribute::RequestedAttributes,
+                    )) {
+                    Some(requested) => {
+                        let mut supported = Vec::new();
+                        let mut unsupported = Vec::new();
+
+                        for value in &requested.values {
+                            if let AttributeValue::TextWithoutLang(value_str) = value {
+                                if let Some(attribute) = self.request_printer_attribute(value_str) {
+                                    supported.push(attribute);
+                                } else {
+                                    unsupported.push(String::from(value_str));
+                                }
+                            }
+                        }
+
+                        Some((supported, unsupported))
+                    }
+                    None => None,
+                }
+            }
+            None => None,
+        }
+    }
 }
+
+// impl IppPrinter {
+//     fn intrinsic_attributes(&self) -> HashMap<DelimiterTag, AttributeGroup> {
+//         let printer_uri_supported = self.printer_uri_supported();
+//         let uri_security_supported = self.uri_security_supported();
+//         let uri_authentication_supported = self.uri_authentication_supported();
+//         let printer_name = self.printer_name();
+//         let printer_state_reasons = self.printer_state_reasons();
+//         let printer_state = self.printer_state();
+//         let operation_supported = self.operation_supported();
+//         let charset_configured = self.charset_configured();
+//         let charset_supported = self.charset_supported();
+//         let natural_language_configured = self.natural_language_configured();
+//         let generated_natural_language_supported = self.generated_natural_language_supported();
+//         let document_format_default = self.document_format_default();
+//         let document_format_supported = self.document_format_supported();
+//         let printer_is_accepting_jobs = self.printer_is_accepting_jobs();
+//         let queued_job_count = self.queued_job_count();
+//         let pdl_override_supported = self.pdl_override_supported();
+//         let printer_up_time = self.printer_up_time();
+//         let printer_current_time = self.printer_current_time();
+//         let compression_supported = self.compression_supported();
+
+//         let printer_attribute_group = AttributeGroup {
+//             tag: DelimiterTag::PrinterAttributes,
+//             attributes: HashMap::from([
+//                 (printer_uri_supported.name.clone(), printer_uri_supported),
+//                 (uri_security_supported.name.clone(), uri_security_supported),
+//                 (
+//                     uri_authentication_supported.name.clone(),
+//                     uri_authentication_supported,
+//                 ),
+//                 (printer_name.name.clone(), printer_name),
+//                 (printer_state.name.clone(), printer_state),
+//                 (printer_state_reasons.name.clone(), printer_state_reasons),
+//                 (operation_supported.name.clone(), operation_supported),
+//                 (charset_configured.name.clone(), charset_configured),
+//                 (charset_supported.name.clone(), charset_supported),
+//                 (
+//                     natural_language_configured.name.clone(),
+//                     natural_language_configured,
+//                 ),
+//                 (
+//                     generated_natural_language_supported.name.clone(),
+//                     generated_natural_language_supported,
+//                 ),
+//                 (
+//                     document_format_default.name.clone(),
+//                     document_format_default,
+//                 ),
+//                 (
+//                     printer_is_accepting_jobs.name.clone(),
+//                     printer_is_accepting_jobs,
+//                 ),
+//                 (
+//                     document_format_supported.name.clone(),
+//                     document_format_supported,
+//                 ),
+//                 (queued_job_count.name.clone(), queued_job_count),
+//                 (pdl_override_supported.name.clone(), pdl_override_supported),
+//                 (printer_up_time.name.clone(), printer_up_time),
+//                 (printer_current_time.name.clone(), printer_current_time),
+//                 (compression_supported.name.clone(), compression_supported),
+//             ]),
+//         };
+
+//         HashMap::from([(printer_attribute_group.tag, printer_attribute_group)])
+//     }
+// }
+
+// fn test_encoding<T: IppEncode + std::fmt::Debug>(raw: T) {
+//     println!("raw: {:?}", raw);
+//     let encoded = raw.to_ipp();
+//     println!("encoded: {:?}", encoded);
+//     let decoded = T::from_ipp(&encoded, 0);
+//     println!("decoded: {:?}", decoded);
+// }
+
+// fn test() {
+//     // i32
+//     test_encoding(32 as i32);
+
+//     // String
+//     let text_wo_lang = String::from("Text Without Lang");
+//     test_encoding(text_wo_lang);
+
+//     // bool
+//     test_encoding(true);
+//     test_encoding(false);
+
+//     // TextWithLang
+//     let text_with_lang = TextWithLang {
+//         lang: String::from("en"),
+//         text: String::from("Text With Lang"),
+//     };
+//     test_encoding(text_with_lang);
+
+//     // DateTime
+//     let date = Utc::now();
+//     test_encoding(date);o
+// }
