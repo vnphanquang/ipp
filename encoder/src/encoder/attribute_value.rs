@@ -17,7 +17,7 @@ pub enum AttributeValue {
 
 impl AttributeValue {
     pub fn from_ipp(bytes: &Vec<u8>, offset: usize, value_tag: ValueTag) -> (usize, Self) {
-        let mut len: usize = 0;
+        let len: usize;
         let value: Self;
         match value_tag {
             ValueTag::Integer | ValueTag::Enum => {
