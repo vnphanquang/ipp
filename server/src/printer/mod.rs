@@ -14,7 +14,7 @@ use ipp_encoder::{
         },
     },
 };
-use std::{collections::HashMap, str::FromStr};
+use std::collections::HashMap;
 
 mod job;
 use job::IppJob;
@@ -441,72 +441,3 @@ impl IppPrinter {
         }
     }
 }
-
-// impl IppPrinter {
-//     fn intrinsic_attributes(&self) -> HashMap<DelimiterTag, AttributeGroup> {
-//         let printer_uri_supported = self.printer_uri_supported();
-//         let uri_security_supported = self.uri_security_supported();
-//         let uri_authentication_supported = self.uri_authentication_supported();
-//         let printer_name = self.printer_name();
-//         let printer_state_reasons = self.printer_state_reasons();
-//         let printer_state = self.printer_state();
-//         let operation_supported = self.operation_supported();
-//         let charset_configured = self.charset_configured();
-//         let charset_supported = self.charset_supported();
-//         let natural_language_configured = self.natural_language_configured();
-//         let generated_natural_language_supported = self.generated_natural_language_supported();
-//         let document_format_default = self.document_format_default();
-//         let document_format_supported = self.document_format_supported();
-//         let printer_is_accepting_jobs = self.printer_is_accepting_jobs();
-//         let queued_job_count = self.queued_job_count();
-//         let pdl_override_supported = self.pdl_override_supported();
-//         let printer_up_time = self.printer_up_time();
-//         let printer_current_time = self.printer_current_time();
-//         let compression_supported = self.compression_supported();
-
-//         let printer_attribute_group = AttributeGroup {
-//             tag: DelimiterTag::PrinterAttributes,
-//             attributes: HashMap::from([
-//                 (printer_uri_supported.name.clone(), printer_uri_supported),
-//                 (uri_security_supported.name.clone(), uri_security_supported),
-//                 (
-//                     uri_authentication_supported.name.clone(),
-//                     uri_authentication_supported,
-//                 ),
-//                 (printer_name.name.clone(), printer_name),
-//                 (printer_state.name.clone(), printer_state),
-//                 (printer_state_reasons.name.clone(), printer_state_reasons),
-//                 (operation_supported.name.clone(), operation_supported),
-//                 (charset_configured.name.clone(), charset_configured),
-//                 (charset_supported.name.clone(), charset_supported),
-//                 (
-//                     natural_language_configured.name.clone(),
-//                     natural_language_configured,
-//                 ),
-//                 (
-//                     generated_natural_language_supported.name.clone(),
-//                     generated_natural_language_supported,
-//                 ),
-//                 (
-//                     document_format_default.name.clone(),
-//                     document_format_default,
-//                 ),
-//                 (
-//                     printer_is_accepting_jobs.name.clone(),
-//                     printer_is_accepting_jobs,
-//                 ),
-//                 (
-//                     document_format_supported.name.clone(),
-//                     document_format_supported,
-//                 ),
-//                 (queued_job_count.name.clone(), queued_job_count),
-//                 (pdl_override_supported.name.clone(), pdl_override_supported),
-//                 (printer_up_time.name.clone(), printer_up_time),
-//                 (printer_current_time.name.clone(), printer_current_time),
-//                 (compression_supported.name.clone(), compression_supported),
-//             ]),
-//         };
-
-//         HashMap::from([(printer_attribute_group.tag, printer_attribute_group)])
-//     }
-// }
