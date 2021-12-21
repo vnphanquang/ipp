@@ -1,7 +1,20 @@
 [package]
 name = "ipp_encoder"
-version = "0.1.0"
+version = "1.0.0"
+authors = ["Quang Phan <vnphanquang@gmail.com>"]
+description = "Internet Printing Protocol encoder-decoder"
+license = "MIT"
+repository = "https://github.com/vnphanquang/ipp"
+documentation = "https://docs.rs/ipp_encoder"
+readme = "README.md"
 edition = "2021"
+keywords = ["ipp", "printing", "protocol", "encoder", "decoder"]
+exclude = ["target", "Cargo.lock"]
+categories = ["encoding"]
+
+[lib]
+name = "ipp_encoder"
+path = "src/lib.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

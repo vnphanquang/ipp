@@ -1,3 +1,9 @@
+//! # ipp_encoder::encoder
+//!
+//! The `encoder` module provides the `IppEncode` trait and implements
+//! encoder / decoder for IPP operations
+//!
+
 mod attribute;
 mod attribute_group;
 mod attribute_name;

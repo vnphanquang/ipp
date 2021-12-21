@@ -5,6 +5,20 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use std::collections::HashMap;
 
+/// An "attribute-group" field contains zero or more "attribute" fields.
+///
+/// ```
+/// -----------------------------------------------
+/// |           begin-attribute-group-tag         |  1 byte
+/// ----------------------------------------------------------
+/// |                   attribute                 |  p bytes |- 0 or more
+/// ----------------------------------------------------------
+/// ```
+///
+/// ----------------------------------------------------------
+///
+/// ref: [rfc8010](https://datatracker.ietf.org/doc/html/rfc8010#section-3.1.2)
+///
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AttributeGroup {

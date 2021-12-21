@@ -91,6 +91,7 @@ pub enum PrinterAttribute {
     PagesPerMinuteColor,
 }
 
+/// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.2)
 #[derive(
     Serialize,
     Deserialize,
@@ -132,6 +133,7 @@ pub enum JobTemplateAttribute {
     PrintQuality,
 }
 
+/// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.3)
 #[derive(
     Serialize,
     Deserialize,
@@ -203,6 +205,8 @@ pub enum JobAttribute {
     JobMediaSheetsCompleted,
 }
 
+/// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.2)
+
 #[derive(
     Serialize,
     Deserialize,
@@ -220,8 +224,10 @@ pub enum OperationAttribute {
     RequestedAttributes,
     #[strum(serialize = "printer-uri")]
     PrinterUri,
+    /// https://datatracker.ietf.org/doc/html/rfc8011#section-5.3.19
     #[strum(serialize = "attributes-charset")]
     AttributesCharset,
+    /// https://datatracker.ietf.org/doc/html/rfc8011#section-5.3.20
     #[strum(serialize = "attributes-natural-language")]
     AttributesNaturalLanguage,
 }

@@ -4,6 +4,59 @@ use crate::spec::tag::{DelimiterTag, ValueTag};
 
 use super::{AttributeName, AttributeValue, IppEncode};
 
+///
+/// ```
+/// -----------------------------------------------
+/// |          attribute-with-one-value           |  q bytes
+/// ----------------------------------------------------------
+/// |             additional-value                |  r bytes |- 0 or more
+/// ----------------------------------------------------------
+/// ```
+///
+/// ref: [rfc8010](https://datatracker.ietf.org/doc/html/rfc8010#section-3.1.3)
+///
+/// -----------------------------------------------
+///
+/// ### Single-valued or multi-valued with one value
+///
+/// Encoded with just an "attribute-with-one-value" field
+///
+/// ```
+/// -----------------------------------------------
+/// |                   value-tag                 |   1 byte
+/// -----------------------------------------------
+/// |               name-length  (value is u)     |   2 bytes
+/// -----------------------------------------------
+/// |                     name                    |   u bytes
+/// -----------------------------------------------
+/// |              value-length  (value is v)     |   2 bytes
+/// -----------------------------------------------
+/// |                     value                   |   v bytes
+/// -----------------------------------------------
+/// ```
+///
+/// ref: [rfc8010](https://datatracker.ietf.org/doc/html/rfc8010#section-3.1.4)
+///
+/// -----------------------------------------------
+///
+/// ### Multi-valued with n values
+///
+/// Encoded with an "attribute-with-one-value" field followed by n-1 "additional-value" fields
+///
+/// ```
+/// -----------------------------------------------
+/// |                   value-tag                 |   1 byte
+/// -----------------------------------------------
+/// |            name-length  (value is 0x0000)   |   2 bytes
+/// -----------------------------------------------
+/// |              value-length (value is w)      |   2 bytes
+/// -----------------------------------------------
+/// |                     value                   |   w bytes
+/// -----------------------------------------------
+/// ```
+///
+/// ref: [rfc8010](https://datatracker.ietf.org/doc/html/rfc8010#section-3.1.5)
+///
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Attribute {
     pub tag: ValueTag,

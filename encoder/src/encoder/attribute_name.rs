@@ -6,6 +6,7 @@ use super::{error::AttributeNameParseError, IppEncode};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+/// generalized attribute name from different group (operation, printer, job, job-template)
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AttributeName {
     Operation(OperationAttribute),

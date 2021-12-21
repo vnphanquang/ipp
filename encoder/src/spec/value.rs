@@ -1,5 +1,4 @@
-use serde::{Deserialize, Serialize};
-use strum_macros::{EnumString, FromRepr};
+use strum_macros::EnumString;
 
 /// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4.3)
 #[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]

@@ -3,6 +3,9 @@ use crate::spec::tag::ValueTag;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// generalized attribute value of different types
+///
+/// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8010#section-3.9)
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum AttributeValue {
     TextWithoutLang(String),

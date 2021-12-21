@@ -9,6 +9,31 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use std::collections::HashMap;
 
+///
+/// Operation request or response
+///
+/// ```
+/// -----------------------------------------------
+/// |                  version-number             |   2 bytes  - required
+/// -----------------------------------------------
+/// |               operation-id (request)        |
+/// |                      or                     |   2 bytes  - required
+/// |               status-code (response)        |
+/// -----------------------------------------------
+/// |                   request-id                |   4 bytes  - required
+/// -----------------------------------------------
+/// |                 attribute-group             |   n bytes - 0 or more
+/// -----------------------------------------------
+/// |              end-of-attributes-tag          |   1 byte   - required
+/// -----------------------------------------------
+/// |                     data                    |   y bytes  - optional
+/// -----------------------------------------------
+/// ```
+///
+/// ----------------------------------------------------------
+///
+/// ref: [rfc8010](https://datatracker.ietf.org/doc/html/rfc8010#section-3.1)
+///
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Operation {

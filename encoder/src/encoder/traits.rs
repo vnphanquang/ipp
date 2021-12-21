@@ -1,3 +1,4 @@
+/// Skeleton for implementing encoder / decoder logics
 pub trait IppEncode {
     fn ipp_value_length_bytes() -> usize {
         2
