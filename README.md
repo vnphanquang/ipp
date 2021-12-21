@@ -1,4 +1,4 @@
-# ipp-encoder
+# ipp_encoder
 
 Internet Printing Protocol (IPP) encoder and decoder implementation in Rust, following [RFC 8010][rfc-8010] and [RFC 8011][rfc-8011]. Inspired by [watson's ipp-encoder implementation in javascript][waston/ipp-encoder]
 
@@ -9,6 +9,8 @@ Note: the `ipp-encoder` crate only implements a core encoder/decoder. To see exa
 
 ipp_encoder = { version = "1.0" }
 ```
+
+[Documentation][docs]
 
 ## Todo
 
@@ -21,3 +23,4 @@ ipp_encoder = { version = "1.0" }
 [rfc-8010]: https://datatracker.ietf.org/doc/html/rfc8010
 [rfc-8011]: https://datatracker.ietf.org/doc/html/rfc8011
 [waston/ipp-encoder]: https://github.com/watson/ipp-encoder
+[docs]: https://docs.rs/ipp_encoder

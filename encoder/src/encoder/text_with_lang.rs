@@ -1,7 +1,8 @@
 use super::IppEncode;
 use serde::{Deserialize, Serialize};
 
-/// wrapper for 'textWithoutLanguage' attribute value type
+/// Wrapper for 'textWithoutLanguage' attribute value type
+///
 /// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.1.2.2)
 ///
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]

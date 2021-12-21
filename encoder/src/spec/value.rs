@@ -40,7 +40,7 @@ pub enum PdlOverrideSupportedKeyword {
     NotAttempted,
 }
 
-/// [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4.32)
+/// ref: [rfc8011](https://datatracker.ietf.org/doc/html/rfc8011#section-5.4.32)
 #[derive(EnumString, strum_macros::Display, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CompressionSupportedKeyword {
     #[strum(serialize = "none")]

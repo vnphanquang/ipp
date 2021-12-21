@@ -1,12 +1,12 @@
 [package]
 name = "ipp_encoder"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Quang Phan <vnphanquang@gmail.com>"]
 description = "Internet Printing Protocol encoder-decoder"
 license = "MIT"
 repository = "https://github.com/vnphanquang/ipp"
 documentation = "https://docs.rs/ipp_encoder"
-readme = "README.md"
+readme = "../README.md"
 edition = "2021"
 keywords = ["ipp", "printing", "protocol", "encoder", "decoder"]
 exclude = ["target", "Cargo.lock"]

@@ -36,11 +36,11 @@
 //! // later ...
 //!
 //! let mut response = Operation {
-//! version: IppVersion { major: 1, minor: 1 },
-//! request_id: request.request_id,
-//! operation_id_or_status_code: IppStatusCode::SuccessfulOk as u16,
-//! attribute_groups: HashMap::new(),
-//! data: Vec::new(),
+//!     version: IppVersion { major: 1, minor: 1 },
+//!     request_id: request.request_id,
+//!     operation_id_or_status_code: IppStatusCode::SuccessfulOk as u16,
+//!     attribute_groups: HashMap::new(),
+//!     data: Vec::new(),
 //! };
 //!
 //! println!("Response: {}", response.to_json()) // operation can be deserialized

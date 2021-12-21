@@ -5,6 +5,8 @@ use crate::spec::tag::{DelimiterTag, ValueTag};
 use super::{AttributeName, AttributeValue, IppEncode};
 
 ///
+/// Wrapper for IPP attribute
+///
 /// ```
 /// -----------------------------------------------
 /// |          attribute-with-one-value           |  q bytes
