@@ -1,4 +1,15 @@
+use std::collections::HashMap;
+use std::convert::Infallible;
+use std::net::SocketAddr;
+use std::process::Command;
+use std::str::FromStr;
+use std::sync::Arc;
+
+use astro_dnssd::DNSServiceBuilder;
 use chrono::{DateTime, Utc};
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Method, Request, Response, Server};
+
 use ipp_encoder::{
     encoder::{
         Attribute, AttributeGroup, AttributeName, AttributeValue, IppEncode, IppVersion, Operation,
@@ -14,13 +25,20 @@ use ipp_encoder::{
         },
     },
 };
-use std::collections::HashMap;
 
 mod job;
 use job::IppJob;
 
+async fn shutdown_signal() {
+    // Wait for the CTRL+C signal
+    tokio::signal::ctrl_c()
+        .await
+        .expect("failed to install CTRL+C signal handler");
+}
+
 pub struct IppPrinter {
     uri: String,
+    port: u16,
     name: String,
     state: PrinterState,
     started_at: DateTime<Utc>,
@@ -28,9 +46,54 @@ pub struct IppPrinter {
 }
 
 impl IppPrinter {
-    pub fn new(uri: &str, name: &str) -> Self {
+    pub async fn start(uri: &str, port: u16, name: &str) {
+        let printer = Arc::new(IppPrinter::new(&uri, port, name));
+
+        let make_svc = make_service_fn(move |_| {
+            let inner_printer = printer.clone();
+            async move {
+                Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
+                    let inner_printer = inner_printer.clone();
+                    async move { inner_printer.http_handle(req).await }
+                }))
+            }
+        });
+
+        let address = SocketAddr::from(([127, 0, 0, 1], port));
+        let server = Server::bind(&address).serve(make_svc);
+        let graceful = server.with_graceful_shutdown(shutdown_signal());
+
+        let dns_service = DNSServiceBuilder::new("_ipp._tcp", port)
+            .with_name(&name)
+            .register();
+
+        match dns_service {
+            Ok(dns) => {
+                println!("DNS service registered: {:?}", dns);
+
+                IppPrinter::system_add_printer(&name, port);
+
+                if let Err(e) = graceful.await {
+                    eprintln!("server error: {}", e);
+
+                    IppPrinter::system_remove_printer(&name);
+                } else {
+                    println!("Dropping... {:?}", dns);
+                    println!("gracefully shut down!");
+
+                    IppPrinter::system_remove_printer(&name);
+                }
+            }
+            Err(e) => {
+                eprintln!("Error registering dns service: {:?}", e);
+            }
+        }
+    }
+
+    fn new(uri: &str, port: u16, name: &str) -> Self {
         Self {
             uri: String::from(uri),
+            port,
             name: String::from(name),
             state: PrinterState::Idle,
             started_at: Utc::now(),
@@ -38,7 +101,92 @@ impl IppPrinter {
         }
     }
 
-    pub fn handle(&self, bytes: &Vec<u8>) -> Vec<u8> {
+    fn system_add_printer(name: &str, port: u16) {
+        if cfg!(target_os = "macos") {
+            Command::new("lpadmin")
+                .args(["-p", &name.replace(" ", "_")])
+                .args(["-D", name])
+                .args(["-v", &format!("ipp://localhost:{}", port)])
+                .args(["-P", "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/PrintCore.framework/Versions/A/Resources/Generic.ppd"])
+                .args(["-o", "printer-is-shared=false", "-E"])
+                .output()
+                .expect("failed to auto-add printer to system with lpadmin");
+        } else {
+            // no support yet
+        }
+    }
+
+    fn system_remove_printer(name: &str) {
+        if cfg!(target_os = "macos") {
+            Command::new("lpadmin")
+                .args(["-x", &name.replace(" ", "_")])
+                .output()
+                .expect("failed to auto-remove printer to system with lpadmin");
+        } else {
+            // no support yet
+        }
+    }
+
+    async fn http_handle(&self, req: Request<Body>) -> Result<Response<Body>, Infallible> {
+        let mut res = Response::new(Body::empty());
+
+        println!("============================");
+        println!("Requested in {}, {}", req.method(), req.uri().path());
+        println!(
+            "IPP Printer - printer_uri_supported: {:?}\n",
+            self.printer_uri_supported()
+        );
+
+        match (req.method(), req.uri().path()) {
+            (&Method::GET, "/") => {
+                *res.body_mut() = Body::from("IPP Server");
+            }
+            (&Method::POST, "/") => {
+                let bytes = hyper::body::to_bytes(req.into_body())
+                    .await
+                    .unwrap()
+                    .to_vec();
+
+                let bytes = self.handle(&bytes);
+
+                // let (_, operation) = Operation::from_ipp(&bytes, 0);
+                // println!("\nResponse Operation Counter: {}", operation.to_json());
+
+                *res.status_mut() = hyper::StatusCode::OK;
+                *res.body_mut() = bytes.into();
+
+                // println!("\nResponse Body: {:?}", *res.body());
+                println!("============================");
+            }
+            _ => {
+                *res.status_mut() = hyper::StatusCode::NOT_FOUND;
+            }
+        }
+
+        Ok(res)
+    }
+
+    pub fn ps_to_pdf(ps_path: &str, pdf_path: &str) {
+        Command::new("gs")
+            .args([
+                "-q",
+                "-sPAPERSIZE=a4",
+                "-dSAFER",
+                "-dBATCH",
+                "-dNOPAUSE",
+                "-sDEVICE=pdfimage8",
+                "-r600",
+                "-dDownScaleFactor=3",
+            ])
+            .arg(format!("-sOutputFile={}", pdf_path))
+            .args(["-c", "save", "pop"])
+            .arg("-f")
+            .arg(ps_path)
+            .output()
+            .expect("failed to execute gs command for ps-pdf conversion");
+    }
+
+    fn handle(&self, bytes: &Vec<u8>) -> Vec<u8> {
         let (_, request) = Operation::from_ipp(&bytes, 0);
 
         println!("\nRequest: {}", request.to_json());
@@ -109,6 +257,8 @@ impl IppPrinter {
                     OperationID::PrintJob => {
                         let path = "data.ps";
                         std::fs::write(path, &request.data).unwrap();
+                        let pdf_path = "converted.pdf";
+                        IppPrinter::ps_to_pdf(path, pdf_path);
                     }
                     OperationID::GetPrinterAttributes
                     | OperationID::ValidateJob
