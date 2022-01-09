@@ -5,13 +5,8 @@ use printer::IppPrinter;
 #[tokio::main]
 async fn main() {
     const PORT: u16 = 6363;
-    const NAME: &str = "Rust IPP Printer";
-
-    let hostname = gethostname::gethostname()
-        .to_str()
-        .unwrap_or("127.0.0.1")
-        .to_string();
-    let uri = format!("ipp//{}:{}/", hostname, PORT);
+    const NAME: &str = "Rust_IPP_Printer";
+    let uri = format!("http://{}:{}/", "localhost", PORT);
 
     IppPrinter::start(&uri, PORT, NAME).await;
 }

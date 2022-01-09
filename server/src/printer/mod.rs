@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::process::Command;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -28,6 +27,9 @@ use ipp_encoder::{
 
 mod job;
 use job::IppJob;
+
+mod syscall;
+use syscall::{ps_to_pdf, system_add_printer, system_remove_printer};
 
 async fn shutdown_signal() {
     // Wait for the CTRL+C signal
@@ -63,7 +65,7 @@ impl IppPrinter {
         let server = Server::bind(&address).serve(make_svc);
         let graceful = server.with_graceful_shutdown(shutdown_signal());
 
-        let dns_service = DNSServiceBuilder::new("_ipp._tcp", port)
+        let dns_service = DNSServiceBuilder::new("_http._tcp", port)
             .with_name(&name)
             .register();
 
@@ -71,17 +73,17 @@ impl IppPrinter {
             Ok(dns) => {
                 println!("DNS service registered: {:?}", dns);
 
-                IppPrinter::system_add_printer(&name, port);
+                system_add_printer(&name, port);
 
                 if let Err(e) = graceful.await {
                     eprintln!("server error: {}", e);
 
-                    IppPrinter::system_remove_printer(&name);
+                    system_remove_printer(&name);
                 } else {
                     println!("Dropping... {:?}", dns);
                     println!("gracefully shut down!");
 
-                    IppPrinter::system_remove_printer(&name);
+                    system_remove_printer(&name);
                 }
             }
             Err(e) => {
@@ -98,32 +100,6 @@ impl IppPrinter {
             state: PrinterState::Idle,
             started_at: Utc::now(),
             jobs: Vec::new(),
-        }
-    }
-
-    fn system_add_printer(name: &str, port: u16) {
-        if cfg!(target_os = "macos") {
-            Command::new("lpadmin")
-                .args(["-p", &name.replace(" ", "_")])
-                .args(["-D", name])
-                .args(["-v", &format!("ipp://localhost:{}", port)])
-                .args(["-P", "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/PrintCore.framework/Versions/A/Resources/Generic.ppd"])
-                .args(["-o", "printer-is-shared=false", "-E"])
-                .output()
-                .expect("failed to auto-add printer to system with lpadmin");
-        } else {
-            // no support yet
-        }
-    }
-
-    fn system_remove_printer(name: &str) {
-        if cfg!(target_os = "macos") {
-            Command::new("lpadmin")
-                .args(["-x", &name.replace(" ", "_")])
-                .output()
-                .expect("failed to auto-remove printer to system with lpadmin");
-        } else {
-            // no support yet
         }
     }
 
@@ -166,26 +142,6 @@ impl IppPrinter {
         Ok(res)
     }
 
-    pub fn ps_to_pdf(ps_path: &str, pdf_path: &str) {
-        Command::new("gs")
-            .args([
-                "-q",
-                "-sPAPERSIZE=a4",
-                "-dSAFER",
-                "-dBATCH",
-                "-dNOPAUSE",
-                "-sDEVICE=pdfimage8",
-                "-r600",
-                "-dDownScaleFactor=3",
-            ])
-            .arg(format!("-sOutputFile={}", pdf_path))
-            .args(["-c", "save", "pop"])
-            .arg("-f")
-            .arg(ps_path)
-            .output()
-            .expect("failed to execute gs command for ps-pdf conversion");
-    }
-
     fn handle(&self, bytes: &Vec<u8>) -> Vec<u8> {
         let (_, request) = Operation::from_ipp(&bytes, 0);
 
@@ -193,7 +149,10 @@ impl IppPrinter {
         println!("OperationID: {}\n", request.operation_id().unwrap() as i32);
 
         let mut response = Operation {
-            version: IppVersion { major: 1, minor: 1 },
+            version: IppVersion {
+                major: 1,
+                minor: request.version.minor,
+            },
             request_id: request.request_id,
             operation_id_or_status_code: IppStatusCode::SuccessfulOk as u16,
             attribute_groups: HashMap::new(),
@@ -258,7 +217,7 @@ impl IppPrinter {
                         let path = "data.ps";
                         std::fs::write(path, &request.data).unwrap();
                         let pdf_path = "converted.pdf";
-                        IppPrinter::ps_to_pdf(path, pdf_path);
+                        ps_to_pdf(path, pdf_path);
                     }
                     OperationID::GetPrinterAttributes
                     | OperationID::ValidateJob
