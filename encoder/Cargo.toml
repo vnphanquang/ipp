@@ -1,27 +1,34 @@
 [package]
 name = "ipp_encoder"
-version = "1.0.1"
-authors = ["Quang Phan <vnphanquang@gmail.com>"]
+version = "1.0.2"
+authors = [ "Quang Phan <vnphanquang@gmail.com>" ]
 description = "Internet Printing Protocol encoder-decoder"
 license = "MIT"
 repository = "https://github.com/vnphanquang/ipp"
 documentation = "https://docs.rs/ipp_encoder"
 readme = "../README.md"
 edition = "2021"
-keywords = ["ipp", "printing", "protocol", "encoder", "decoder"]
-exclude = ["target", "Cargo.lock"]
-categories = ["encoding"]
+keywords = [ "ipp", "printing", "protocol", "encoder", "decoder" ]
+exclude = [ "target", "Cargo.lock" ]
+categories = [ "encoding" ]
 
 [lib]
 name = "ipp_encoder"
 path = "src/lib.rs"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 strum = "0.23"
 strum_macros = "0.23"
-chrono = { version = "0.4", features = ["serde"] }
-serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_with = { version = "1.11", features = ["macros"] }
+
+  [dependencies.chrono]
+  version = "0.4"
+  features = [ "serde" ]
+
+  [dependencies.serde]
+  version = "1.0"
+  features = [ "derive" ]
+
+  [dependencies.serde_with]
+  version = "1.11"
+  features = [ "macros" ]
