@@ -1,13 +1,14 @@
-name: Test Build
+name: Test
 on:
   pull_request:
     branches:
       - main
 jobs:
   build:
-    name: $${matrix.rust}} on ${{matrix.os}}
-    runs-on: ${{matrix.os}}
+    name: $${{ matrix.rust }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-2019, macOS-latest]
         rust: [stable]
@@ -20,7 +21,7 @@ jobs:
       - name: Install Toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: ${{matrix.rust}}
+          toolchain: ${{ matrix.rust }}
           override: true
           components: rustfmt, clippy
       - name: Log Toolchain Information
@@ -32,10 +33,10 @@ jobs:
       - name: Check Formatting
         if: matrix.rust == 'stable'
         run: cargo fmt --all -- --check
-        continue-on-error: ${{matrix.can-fail}}
+        continue-on-error: ${{ matrix.can-fail }}
       - name: Clippy
         run: cargo clippy -- -D clippy::all
-        continue-on-error: ${{matrix.can-fail}}
+        continue-on-error: ${{ matrix.can-fail }}
       - name: Test Build
         run: cargo build
-        continue-on-error: ${{matrix.can-fail}}
+        continue-on-error: ${{ matrix.can-fail }}

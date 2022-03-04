@@ -1,0 +1,51 @@
+name: Publish
+on: workflow_dispatch
+
+jobs:
+  publish:
+    name: ipp_encoder Publication
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          path: main
+      - name: Install Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Publish
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+        working-directory: ./encoder
+        continue-on-error: false
+      - name: Bump Version & Tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.0
+        with:
+          release_branches: main
+          pre_release_branches: prerelease
+          default_bump: patch
+          tag_prefix: v
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create a Github Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.tag_version.outputs.new_tag }}
+          name: Release ${{ steps.tag_version.outputs.new_tag }}
+          body: ${{ steps.tag_version.outputs.changelog }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Update Changelog
+        uses: stefanzweifel/changelog-updater-action@v1
+        with:
+          latest-version: ${{ steps.tag_version.outputs.new_tag }}
+          release-notes: ${{ steps.tag_version.outputs.changelog }}
+      - name: Create Pull Request for Changelog
+        uses: peter-evans/create-pull-request@v3
+        with:
+          commit-message: format('CHANGELOG update for release {0}', {{ steps.tag_version.outputs.new_tag }})
+          title: format('CHANGELOG update for release {0}', {{ steps.tag_version.outputs.new_tag }})
+          branch: format('changelog/{0}', {{ steps.tag_version.outputs.new_tag }})
+          base: main
+          reviewers: vnphanquang
