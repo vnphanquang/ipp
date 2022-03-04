@@ -4,22 +4,23 @@ on: workflow_dispatch
 jobs:
   publish:
     name: ipp_encoder Publication
-    environment: production
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
         with:
-          path: main
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
-      - name: Publish
-        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
-        working-directory: ./encoder
-        continue-on-error: false
+      - name: Log Toolchain Information
+        run: |
+          rustc --version
+          rustfmt --version
+          rustup --version
+          cargo --version
       - name: Bump Version & Tag
         id: tag_version
         uses: mathieudutour/github-tag-action@v6.0
@@ -29,6 +30,18 @@ jobs:
           default_bump: patch
           tag_prefix: v
           github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set New Version in Cargo.toml
+        uses: ciiiii/toml-editor@1.0.0
+        with:
+          file: "./encoder/Cargo.toml"
+          key: "package.version"
+          value: "${{ steps.tag_version.outputs.new_version }}"
+      - name: Publish
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          args: --token "${{ secrets.CRATES_IO_TOKEN }}" --manifest-path "./encoder/Cargo.toml" --allow-dirty
+        continue-on-error: false
       - name: Create a Github Release
         uses: ncipollo/release-action@v1
         with:
@@ -44,8 +57,8 @@ jobs:
       - name: Create Pull Request for Changelog
         uses: peter-evans/create-pull-request@v3
         with:
-          commit-message: format('CHANGELOG update for release {0}', {{ steps.tag_version.outputs.new_tag }})
-          title: format('CHANGELOG update for release {0}', {{ steps.tag_version.outputs.new_tag }})
-          branch: format('changelog/{0}', {{ steps.tag_version.outputs.new_tag }})
+          commit-message: ${{ format('CHANGELOG update for release {0}', steps.tag_version.outputs.new_tag) }}
+          title: ${{ format('CHANGELOG update for release {0}', steps.tag_version.outputs.new_tag) }}
+          branch: ${{ format('changelog/{0}', steps.tag_version.outputs.new_tag) }}
           base: main
           reviewers: vnphanquang

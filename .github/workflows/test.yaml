@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04, windows-2019, macOS-latest]
+        os: [ubuntu-latest, windows-2019, macOS-latest]
         rust: [stable]
         include:
           - rust: stable
@@ -39,15 +39,15 @@ jobs:
           command: fmt
           args: --all -- --check
         continue-on-error: ${{ matrix.can-fail }}
-      - name: Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D clippy::all
-        continue-on-error: ${{ matrix.can-fail }}
       - name: Test Build
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --all-features
+          # only build ipp_encoder for now since astro-dnssd is failing currently for ipp_server on ubuntu
+          args: --release --all-features --manifest-path "./encoder/Cargo.toml"
+        continue-on-error: ${{ matrix.can-fail }}
+      - name: Clippy
+        run: cargo clippy -- -D clippy::all
+        # only clippy ipp_encoder for now since astro-dnssd is failing currently for ipp_server on ubuntu
+        working-directory: ./encoder
         continue-on-error: ${{ matrix.can-fail }}
