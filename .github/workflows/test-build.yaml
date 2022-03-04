@@ -1,10 +1,10 @@
-name: ipp_encoder test build
+name: Test Build
 on:
   pull_request:
     branches:
       - main
 jobs:
-  test-build:
+  build:
     name: $${matrix.rust}} on ${{matrix.os}}
     runs-on: ${{matrix.os}}
     strategy:
@@ -14,28 +14,28 @@ jobs:
         include:
           - rust: stable
             can-fail: false
-        steps:
-          - name: Checkout Repository
-            uses: actions/checkout@v3
-          - name: Install Toolchain
-            uses: actions-rs/toolchain@v1
-            with:
-              toolchain: ${{matrix.rust}}
-              override: true
-              components: rustfmt, clippy
-          - name: Log Toolchain Information
-            run: |
-              rustc --version
-              rustfmt --version
-              rustup --version
-              cargo --version
-          - name: Check Formatting
-            if: matrix.rust == 'stable'
-            run: cargo fmt --all -- --check
-            continue-on-error: ${{matrix.can-fail}}
-          - name: Clippy
-            run: cargo clippy -- -D clippy::all
-            continue-on-error: ${{matrix.can-fail}}
-          - name: Test Build
-            run: cargo build
-            continue-on-error: ${{matrix.can-fail}}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+      - name: Install Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{matrix.rust}}
+          override: true
+          components: rustfmt, clippy
+      - name: Log Toolchain Information
+        run: |
+          rustc --version
+          rustfmt --version
+          rustup --version
+          cargo --version
+      - name: Check Formatting
+        if: matrix.rust == 'stable'
+        run: cargo fmt --all -- --check
+        continue-on-error: ${{matrix.can-fail}}
+      - name: Clippy
+        run: cargo clippy -- -D clippy::all
+        continue-on-error: ${{matrix.can-fail}}
+      - name: Test Build
+        run: cargo build
+        continue-on-error: ${{matrix.can-fail}}
