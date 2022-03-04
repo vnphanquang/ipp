@@ -4,7 +4,7 @@ impl IppEncode for i32 {
     fn ipp_bytes() -> usize {
         4
     }
-    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
+    fn from_ipp(bytes: &[u8], offset: usize) -> (usize, Self) {
         let value_offset_start = offset + Self::ipp_value_length_bytes();
         let value_offset_end = value_offset_start + Self::ipp_bytes();
 
@@ -27,7 +27,7 @@ impl IppEncode for i32 {
 }
 
 impl IppEncode for String {
-    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
+    fn from_ipp(bytes: &[u8], offset: usize) -> (usize, Self) {
         let len_slice: [u8; 2] = bytes[offset..(offset + Self::ipp_value_length_bytes())]
             .try_into()
             .unwrap();
@@ -60,7 +60,7 @@ impl IppEncode for bool {
         1
     }
 
-    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
+    fn from_ipp(bytes: &[u8], offset: usize) -> (usize, Self) {
         let value_offset_start = offset + Self::ipp_value_length_bytes();
         let value_offset_end = value_offset_start + Self::ipp_bytes();
 

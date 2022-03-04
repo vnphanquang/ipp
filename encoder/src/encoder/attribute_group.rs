@@ -28,12 +28,12 @@ pub struct AttributeGroup {
 }
 
 impl IppEncode for HashMap<DelimiterTag, AttributeGroup> {
-    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
+    fn from_ipp(bytes: &[u8], offset: usize) -> (usize, Self) {
         let mut decoded: Self = HashMap::new();
 
         let mut shifting_offset = offset;
 
-        let read_tag = |bytes: &Vec<u8>, offset: usize| -> (usize, Option<DelimiterTag>) {
+        let read_tag = |bytes: &[u8], offset: usize| -> (usize, Option<DelimiterTag>) {
             let slice: [u8; 1] = bytes[offset..offset + 1].try_into().unwrap();
             let raw_int = u8::from_be_bytes(slice);
             (1, DelimiterTag::from_repr(raw_int as usize))
@@ -103,7 +103,7 @@ impl IppEncode for HashMap<DelimiterTag, AttributeGroup> {
             // write delimiter tag
             vec.append(&mut (group.tag as u8).to_be_bytes().to_vec());
 
-            for (_, attribute) in &group.attributes {
+            for attribute in group.attributes.values() {
                 // write attribute
                 vec.append(&mut attribute.to_ipp());
             }
@@ -118,9 +118,9 @@ impl IppEncode for HashMap<DelimiterTag, AttributeGroup> {
     fn ipp_len(&self) -> usize {
         let mut len: usize = 0;
 
-        for (_, group) in self {
+        for group in self.values() {
             len += 1; // delimiter tag
-            for (_, attribute) in &group.attributes {
+            for attribute in group.attributes.values() {
                 len += attribute.ipp_len();
             }
         }

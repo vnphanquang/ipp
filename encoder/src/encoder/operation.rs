@@ -48,7 +48,7 @@ pub struct Operation {
 }
 
 impl IppEncode for Operation {
-    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
+    fn from_ipp(bytes: &[u8], offset: usize) -> (usize, Self) {
         let mut shifting_offset = offset;
 
         // read version.major

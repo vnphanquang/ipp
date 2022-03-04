@@ -23,7 +23,7 @@ async fn main() {
 
     const NAME: &str = "Rust IPP Printer";
 
-    let printer = Arc::new(IppPrinter::new(&uri, &NAME));
+    let printer = Arc::new(IppPrinter::new(&uri, NAME));
 
     let make_svc = make_service_fn(move |_| {
         let inner_printer = printer.clone();
@@ -39,7 +39,7 @@ async fn main() {
     let graceful = server.with_graceful_shutdown(shutdown_signal());
 
     let dns_service = DNSServiceBuilder::new("_ipp._tcp", 6363)
-        .with_name(&NAME)
+        .with_name(NAME)
         .register();
 
     match dns_service {
