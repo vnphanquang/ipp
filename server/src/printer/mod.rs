@@ -15,6 +15,7 @@ use ipp_encoder::{
     },
 };
 use std::collections::HashMap;
+use std::str::FromStr;
 
 mod job;
 use job::IppJob;
@@ -38,8 +39,8 @@ impl IppPrinter {
         }
     }
 
-    pub fn handle(&self, bytes: &Vec<u8>) -> Vec<u8> {
-        let (_, request) = Operation::from_ipp(&bytes, 0);
+    pub fn handle(&self, bytes: &[u8]) -> Vec<u8> {
+        let (_, request) = Operation::from_ipp(bytes, 0);
 
         println!("\nRequest: {}", request.to_json());
         println!("OperationID: {}\n", request.operation_id().unwrap() as i32);
@@ -60,64 +61,60 @@ impl IppPrinter {
         if request.version.major != 1 {
             response.operation_id_or_status_code =
                 IppStatusCode::ServerErrorVersionNotSupported as u16;
+        } else if !self
+            .operation_supported()
+            .values
+            .contains(&AttributeValue::Number(
+                request.operation_id_or_status_code as i32,
+            ))
+        {
+            response.operation_id_or_status_code =
+                IppStatusCode::ServerErrorOperationNotSupported as u16;
         } else {
-            if !self
-                .operation_supported()
-                .values
-                .contains(&AttributeValue::Number(
-                    request.operation_id_or_status_code as i32,
-                ))
-            {
-                response.operation_id_or_status_code =
-                    IppStatusCode::ServerErrorOperationNotSupported as u16;
-            } else {
-                if let Some((supported, unsupported)) = self.request_printer_attributes(&request) {
-                    // insert unsupported-attributes group
-                    let mut unsupported_group = AttributeGroup {
-                        tag: DelimiterTag::UnsupportedAttributes,
-                        attributes: HashMap::new(),
+            if let Some((supported, unsupported)) = self.request_printer_attributes(&request) {
+                // insert unsupported-attributes group
+                let mut unsupported_group = AttributeGroup {
+                    tag: DelimiterTag::UnsupportedAttributes,
+                    attributes: HashMap::new(),
+                };
+                for value in unsupported {
+                    let attribute = Attribute {
+                        tag: ValueTag::Unsupported,
+                        name: AttributeName::Unsupported(value),
+                        values: vec![AttributeValue::TextWithoutLang(String::from("unsupported"))],
                     };
-                    for value in unsupported {
-                        let attribute = Attribute {
-                            tag: ValueTag::Unsupported,
-                            name: AttributeName::Unsupported(value),
-                            values: vec![AttributeValue::TextWithoutLang(String::from(
-                                "unsupported",
-                            ))],
-                        };
-                        unsupported_group
-                            .attributes
-                            .insert(attribute.name.clone(), attribute);
-                    }
-                    response
-                        .attribute_groups
-                        .insert(unsupported_group.tag, unsupported_group);
+                    unsupported_group
+                        .attributes
+                        .insert(attribute.name.clone(), attribute);
+                }
+                response
+                    .attribute_groups
+                    .insert(unsupported_group.tag, unsupported_group);
 
-                    // insert printer-attributes group
-                    let printer_attribute_group = AttributeGroup {
-                        tag: DelimiterTag::PrinterAttributes,
-                        attributes: supported
-                            .into_iter()
-                            .map(|attr| (attr.name.clone(), attr))
-                            .collect(),
-                    };
-                    response
-                        .attribute_groups
-                        .insert(printer_attribute_group.tag, printer_attribute_group);
+                // insert printer-attributes group
+                let printer_attribute_group = AttributeGroup {
+                    tag: DelimiterTag::PrinterAttributes,
+                    attributes: supported
+                        .into_iter()
+                        .map(|attr| (attr.name.clone(), attr))
+                        .collect(),
+                };
+                response
+                    .attribute_groups
+                    .insert(printer_attribute_group.tag, printer_attribute_group);
+            }
+            match request.operation_id().unwrap() {
+                OperationID::PrintJob => {
+                    let path = "data.ps";
+                    std::fs::write(path, &request.data).unwrap();
                 }
-                match request.operation_id().unwrap() {
-                    OperationID::PrintJob => {
-                        let path = "data.ps";
-                        std::fs::write(path, &request.data).unwrap();
-                    }
-                    OperationID::GetPrinterAttributes
-                    | OperationID::ValidateJob
-                    | OperationID::CancelJob
-                    | OperationID::GetJobAttributes
-                    | OperationID::GetJobs => {}
-                    _ => {}
-                }
-            };
+                OperationID::GetPrinterAttributes
+                | OperationID::ValidateJob
+                | OperationID::CancelJob
+                | OperationID::GetJobAttributes
+                | OperationID::GetJobs => {}
+                _ => {}
+            }
         }
 
         println!("\nResponse: {}\n", response.to_json());

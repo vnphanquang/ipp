@@ -35,24 +35,21 @@ impl std::str::FromStr for AttributeName {
 
 impl std::fmt::Display for AttributeName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", &self.to_string())
-    }
-}
-
-impl AttributeName {
-    pub fn to_string(&self) -> String {
-        match self {
+        let attr = match self {
             Self::Operation(attr) => attr.to_string(),
             Self::Printer(attr) => attr.to_string(),
             Self::JobTemplate(attr) => attr.to_string(),
             Self::Job(attr) => attr.to_string(),
             Self::Unsupported(attr) => String::from(attr),
-        }
+        };
+        write!(f, "{}", &attr)
     }
+}
 
+impl AttributeName {
     pub fn is_empty(&self) -> bool {
         if let Self::Unsupported(attr) = self {
-            attr == ""
+            attr.is_empty()
         } else {
             false
         }
@@ -60,7 +57,7 @@ impl AttributeName {
 }
 
 impl IppEncode for AttributeName {
-    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
+    fn from_ipp(bytes: &[u8], offset: usize) -> (usize, Self) {
         let (delta, raw_name) = String::from_ipp(bytes, offset);
         (delta, Self::from_str(&raw_name).unwrap())
     }

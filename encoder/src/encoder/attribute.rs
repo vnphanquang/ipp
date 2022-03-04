@@ -67,7 +67,7 @@ pub struct Attribute {
 }
 
 impl Attribute {
-    fn decode_one(bytes: &Vec<u8>, offset: usize) -> (usize, bool, Option<Self>) {
+    fn decode_one(bytes: &[u8], offset: usize) -> (usize, bool, Option<Self>) {
         let mut shifting_offset = offset;
 
         let slice: [u8; 1] = bytes[shifting_offset..shifting_offset + 1]
@@ -106,7 +106,7 @@ impl Attribute {
         (shifting_offset - offset, has_name, decoded)
     }
 
-    pub fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Option<Self>) {
+    pub fn from_ipp(bytes: &[u8], offset: usize) -> (usize, Option<Self>) {
         let (mut first_offset, _, first_attribute_opt) = Self::decode_one(bytes, offset);
 
         let next_offset = offset + first_offset;
@@ -118,24 +118,20 @@ impl Attribute {
                 let (mut next_offset, mut has_name, mut next_attribute_opt) =
                     Self::decode_one(bytes, next_offset);
 
-                loop {
-                    if let Some(mut next_attribute) = next_attribute_opt {
-                        if has_name || (offset + first_offset + next_offset >= bytes.len()) {
-                            break;
-                        }
-                        // add additional_value
-                        first_attribute.values.append(&mut next_attribute.values);
-
-                        // add to offset
-                        first_offset += next_offset;
-
-                        let next = Self::decode_one(bytes, offset + first_offset);
-                        next_offset = next.0;
-                        has_name = next.1;
-                        next_attribute_opt = next.2;
-                    } else {
+                while let Some(mut next_attribute) = next_attribute_opt {
+                    if has_name || (offset + first_offset + next_offset >= bytes.len()) {
                         break;
                     }
+                    // add additional_value
+                    first_attribute.values.append(&mut next_attribute.values);
+
+                    // add to offset
+                    first_offset += next_offset;
+
+                    let next = Self::decode_one(bytes, offset + first_offset);
+                    next_offset = next.0;
+                    has_name = next.1;
+                    next_attribute_opt = next.2;
                 }
 
                 (first_offset, Some(first_attribute))
@@ -147,7 +143,7 @@ impl Attribute {
 
     pub fn to_ipp(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = Vec::with_capacity(self.ipp_len());
-        if self.values.len() > 0 {
+        if !self.values.is_empty() {
             for i in 0..self.values.len() {
                 // write tag
                 bytes.append(&mut (self.tag as u8).to_be_bytes().to_vec());
@@ -170,7 +166,7 @@ impl Attribute {
     }
 
     pub fn ipp_len(&self) -> usize {
-        if self.values.len() == 0 {
+        if self.values.is_empty() {
             0
         } else {
             // each value has a 1 byte value-tag

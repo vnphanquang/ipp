@@ -6,7 +6,7 @@ impl IppEncode for DateTime<Utc> {
         11
     }
 
-    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
+    fn from_ipp(bytes: &[u8], offset: usize) -> (usize, Self) {
         let start = offset + Self::ipp_value_length_bytes();
 
         let slice_offset = start + 8;
@@ -88,7 +88,7 @@ impl IppEncode for DateTime<Utc> {
         let seconds = self.second() as u8;
         let seconds_bytes = seconds.to_be_bytes().to_vec();
 
-        let deciseconds = 0 as u8;
+        let deciseconds = 0_u8;
         let deciseconds_bytes = deciseconds.to_be_bytes().to_vec();
 
         let local_minus_utc = self.timezone().fix().local_minus_utc() / 60;

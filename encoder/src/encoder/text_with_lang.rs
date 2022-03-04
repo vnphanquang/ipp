@@ -12,7 +12,7 @@ pub struct TextWithLang {
 }
 
 impl IppEncode for TextWithLang {
-    fn from_ipp(bytes: &Vec<u8>, offset: usize) -> (usize, Self) {
+    fn from_ipp(bytes: &[u8], offset: usize) -> (usize, Self) {
         let lang_offset = offset + Self::ipp_value_length_bytes();
         let (lang_len, lang) = String::from_ipp(bytes, lang_offset);
 
